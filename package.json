@@ -1,0 +1,186 @@
+{
+  "name": "xplanator",
+  "displayName": "XPlanator",
+  "description": "Understand selected code in VS Code with local-first explanations and optional BYOK cloud models.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "ollama",
+    "local-first",
+    "byok",
+    "ai",
+    "explain",
+    "code-explanation",
+    "learning",
+    "education",
+    "beginner",
+    "typescript",
+    "python",
+    "javascript"
+  ],
+  "activationEvents": [
+    "onCommand:explainCode.explainSelection",
+    "onCommand:explainCode.explainAtCursor",
+    "onCommand:explainCode.explainMoreSimply",
+    "onCommand:explainCode.explainInMoreDetail",
+    "onCommand:explainCode.checkOllama"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "explainCode.explainSelection",
+        "title": "Explain Code: Explain Selection",
+        "category": "Explain Code"
+      },
+      {
+        "command": "explainCode.explainAtCursor",
+        "title": "Explain Code: Explain At Cursor",
+        "category": "Explain Code"
+      },
+      {
+        "command": "explainCode.explainMoreSimply",
+        "title": "Explain Code: Explain More Simply",
+        "category": "Explain Code"
+      },
+      {
+        "command": "explainCode.explainInMoreDetail",
+        "title": "Explain Code: Explain In More Detail",
+        "category": "Explain Code"
+      },
+      {
+        "command": "explainCode.checkOllama",
+        "title": "Explain Code: Check AI Provider Connection",
+        "category": "Explain Code"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "explainCode.explainSelection",
+          "group": "navigation@10",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "explainCode.explainAtCursor",
+          "group": "navigation@11",
+          "when": "editorTextFocus"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "explainCode.explainSelection",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorTextFocus && editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "Explain Code",
+      "properties": {
+        "explainCode.ollamaUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Base URL of your local Ollama server."
+        },
+        "explainCode.provider": {
+          "type": "string",
+          "enum": [
+            "ollama",
+            "openai",
+            "gemini",
+            "anthropic"
+          ],
+          "default": "ollama",
+          "description": "AI provider used by XPlanator. Ollama stays local; cloud providers require an API key."
+        },
+        "explainCode.openAiBaseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "Base URL for OpenAI or OpenAI-compatible APIs."
+        },
+        "explainCode.model": {
+          "type": "string",
+          "default": "qwen2.5-coder",
+          "description": "Model used to explain code. Examples: qwen2.5-coder, gpt-5, gemini-2.5-flash, claude-sonnet-4-5."
+        },
+        "explainCode.maxSurroundingLines": {
+          "type": "number",
+          "default": 60,
+          "minimum": 10,
+          "maximum": 200,
+          "description": "Maximum number of surrounding lines sent as context from the current file."
+        },
+        "explainCode.responseStyle": {
+          "type": "string",
+          "enum": [
+            "simple",
+            "technical",
+            "beginner"
+          ],
+          "default": "beginner",
+          "description": "Default tone used for quick explanations."
+        },
+        "explainCode.language": {
+          "type": "string",
+          "enum": [
+            "fr",
+            "en"
+          ],
+          "default": "fr",
+          "description": "Language used for AI explanations and UI labels."
+        },
+        "explainCode.timeoutSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 180,
+          "description": "Timeout in seconds for Ollama requests."
+        },
+        "explainCode.includeRelatedContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include extra workspace snippets from definitions and references when available."
+        },
+        "explainCode.maxRelatedSnippets": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 8,
+          "description": "Maximum number of related workspace snippets to attach for context."
+        },
+        "explainCode.maxRelatedLinesPerSnippet": {
+          "type": "number",
+          "default": 28,
+          "minimum": 8,
+          "maximum": 80,
+          "description": "Maximum lines captured for each related workspace snippet."
+        },
+        "explainCode.maxContextCharacters": {
+          "type": "number",
+          "default": 24000,
+          "minimum": 4000,
+          "maximum": 120000,
+          "description": "Overall character budget for extra related context. Increase this for larger cloud models."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.9.2"
+  }
+}
