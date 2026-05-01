@@ -155,6 +155,10 @@ export function activate(context: vscode.ExtensionContext): void {
       await explainFromContext(lastExplanationState.codeContext, "detailed", panel, aiClient);
     }),
 
+    vscode.commands.registerCommand("explainCode.openSettings", async () => {
+      await showSettings(panel, aiClient);
+    }),
+
     vscode.commands.registerCommand("explainCode.checkOllama", async () => {
       const config = getConfig();
 
@@ -183,6 +187,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   updateStatusBarItem(statusBarItem);
+  void maybeShowFirstRunSetup(context, panel, aiClient);
 }
 
 export function deactivate(): void {}
@@ -268,6 +273,33 @@ async function showSettings(panel: ExplanationPanel, aiClient: AiClient): Promis
     },
     config.language
   );
+}
+
+async function maybeShowFirstRunSetup(
+  context: vscode.ExtensionContext,
+  panel: ExplanationPanel,
+  aiClient: AiClient
+): Promise<void> {
+  const hasSeenSetup = context.globalState.get<boolean>("xplanator.hasSeenSetup", false);
+
+  if (hasSeenSetup) {
+    return;
+  }
+
+  const language = getConfig().language;
+  const openSettings = localize(language, "firstRunOpenSettings");
+  const later = localize(language, "firstRunLater");
+  const selected = await vscode.window.showInformationMessage(
+    localize(language, "firstRunSetupPrompt"),
+    openSettings,
+    later
+  );
+
+  await context.globalState.update("xplanator.hasSeenSetup", true);
+
+  if (selected === openSettings) {
+    await showSettings(panel, aiClient);
+  }
 }
 
 async function checkSettingsConnection(
@@ -386,7 +418,7 @@ function getConfig(): ExtensionConfig {
   const language = normalizeLanguage(config.get<string>("language", "fr"));
   const provider = normalizeProvider(config.get<string>("provider", "ollama"));
 
-  return {
+  return tuneConfigForProvider({
     provider,
     ollamaUrl: config.get<string>("ollamaUrl", "http://localhost:11434"),
     openAiBaseUrl: config.get<string>("openAiBaseUrl", "https://api.openai.com/v1"),
@@ -399,7 +431,7 @@ function getConfig(): ExtensionConfig {
     maxRelatedSnippets: config.get<number>("maxRelatedSnippets", 0),
     maxRelatedLinesPerSnippet: config.get<number>("maxRelatedLinesPerSnippet", 28),
     maxContextCharacters: config.get<number>("maxContextCharacters", 8000)
-  };
+  });
 }
 
 function normalizeProvider(value: string): ModelProvider {
@@ -444,6 +476,20 @@ function buildConfigFromSettings(settings: ModelSettingsInput | undefined): Exte
     model: normalizeModel(settings?.model, provider),
     ollamaUrl: settings?.ollamaUrl?.trim() || config.ollamaUrl,
     openAiBaseUrl: settings?.openAiBaseUrl?.trim() || config.openAiBaseUrl
+  };
+}
+
+function tuneConfigForProvider(config: ExtensionConfig): ExtensionConfig {
+  if (config.provider !== "ollama") {
+    return config;
+  }
+
+  return {
+    ...config,
+    maxSurroundingLines: Math.min(config.maxSurroundingLines, 20),
+    includeRelatedContext: false,
+    maxRelatedSnippets: 0,
+    maxContextCharacters: Math.min(config.maxContextCharacters, 8000)
   };
 }
 
@@ -561,6 +607,9 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     openFileForCursorExplain: "Ouvrez un fichier pour expliquer la ligne ou le symbole sous le curseur.",
     nothingToSimplify: "Aucune explication precedente a simplifier.",
     nothingToDetail: "Aucune explication precedente a detailler.",
+    firstRunSetupPrompt: "XPlanator est pret. Verifiez Ollama, le modele et la langue avant votre premiere explication.",
+    firstRunOpenSettings: "Ouvrir les parametres",
+    firstRunLater: "Plus tard",
     providerConnected: "Le fournisseur IA est connecte.",
     ollamaModelMissing: `Ollama est connecte, mais le modele configure semble absent. Essayez : ollama pull ${modelName ?? "qwen2.5-coder"}`,
     providerNotRunning: "Le fournisseur IA ne repond pas. Verifiez Ollama, la connexion, le modele ou la cle API.",
@@ -596,6 +645,9 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     openFileForCursorExplain: "Open a file to explain the current line or symbol under the cursor.",
     nothingToSimplify: "There is no previous explanation to simplify.",
     nothingToDetail: "There is no previous explanation to expand.",
+    firstRunSetupPrompt: "XPlanator is ready. Check Ollama, the model, and the language before your first explanation.",
+    firstRunOpenSettings: "Open settings",
+    firstRunLater: "Later",
     providerConnected: "The AI provider is connected.",
     ollamaModelMissing: `Ollama is connected, but the configured model seems missing. Try: ollama pull ${modelName ?? "qwen2.5-coder"}`,
     providerNotRunning: "The AI provider is not responding. Check Ollama, the connection, the model, or the API key.",

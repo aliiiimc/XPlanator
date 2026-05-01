@@ -148,11 +148,11 @@ Non-local provider URLs must use `https`. Local Ollama-style endpoints such as `
 - `Explain Code: Explain At Cursor`
 - `Explain Code: Explain More Simply`
 - `Explain Code: Explain In More Detail`
+- `Explain Code: Open Settings`
 - `Explain Code: Check AI Provider Connection`
 
 ## Roadmap
 
-- Better first-run onboarding
 - GIF/demo assets for the Marketplace and GitHub README
 - Project-level explanation mode
 - Dependency and call-flow view
@@ -170,6 +170,8 @@ See [ROADMAP.md](./ROADMAP.md) for a more detailed version.
 Contributions are welcome. Good first contributions include prompt improvements, provider fixes, UI polish, documentation, and tests around section parsing.
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
+
+Packaging notes for VS Code Marketplace and Open VSX live in [PACKAGING.md](./PACKAGING.md).
 
 ## Security
 

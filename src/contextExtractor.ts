@@ -91,7 +91,7 @@ function buildNumberedSnippet(
 
 function clampContextLines(value: number): number {
   if (!Number.isFinite(value)) {
-    return 60;
+    return 20;
   }
 
   return Math.min(200, Math.max(10, Math.round(value)));
@@ -114,9 +114,9 @@ async function collectRelatedSnippets(
     return [];
   }
 
-  const maxSnippets = clampNumber(config.maxRelatedSnippets, 0, 8, 3);
+  const maxSnippets = clampNumber(config.maxRelatedSnippets, 0, 8, 0);
   const maxLines = clampNumber(config.maxRelatedLinesPerSnippet, 8, 80, 28);
-  const maxCharacters = clampNumber(config.maxContextCharacters, 4000, 120000, 24000);
+  const maxCharacters = clampNumber(config.maxContextCharacters, 4000, 120000, 8000);
   const snippets: RelatedSnippet[] = [];
   let consumedCharacters = 0;
 

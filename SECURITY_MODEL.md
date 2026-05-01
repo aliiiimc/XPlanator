@@ -15,6 +15,7 @@ This document explains how API keys and code snippets are handled.
 - API keys are never logged by XPlanator.
 - API keys are only read when making a request to the selected provider.
 - The configured provider request timeout applies to all AI provider HTTP requests.
+- Ollama uses a reduced-context profile by default to avoid sending unnecessarily large prompts to local models.
 - Saved keys can be deleted from the XPlanator settings panel.
 - Non-local custom provider URLs must use HTTPS.
 - Endpoint URL changes require an explicit confirmation before they are saved.

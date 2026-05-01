@@ -4,10 +4,7 @@ This roadmap keeps XPlanator focused on code understanding, not code generation.
 
 ## Near Term
 
-- Add a first-run setup screen
 - Add screenshots and an animated GIF for GitHub and the VS Code Marketplace
-- Add parser tests for section extraction and short takeaways
-- Add Open VSX and VS Code Marketplace packaging notes
 
 ## Product Direction
 

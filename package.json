@@ -5,6 +5,10 @@
   "version": "0.0.1",
   "publisher": "local",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aliiiimc/XPlanator.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -46,6 +50,11 @@
       {
         "command": "explainCode.explainInMoreDetail",
         "title": "Explain Code: Explain In More Detail",
+        "category": "Explain Code"
+      },
+      {
+        "command": "explainCode.openSettings",
+        "title": "Explain Code: Open Settings",
         "category": "Explain Code"
       },
       {
