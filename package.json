@@ -25,13 +25,6 @@
     "python",
     "javascript"
   ],
-  "activationEvents": [
-    "onCommand:explainCode.explainSelection",
-    "onCommand:explainCode.explainAtCursor",
-    "onCommand:explainCode.explainMoreSimply",
-    "onCommand:explainCode.explainInMoreDetail",
-    "onCommand:explainCode.checkOllama"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
