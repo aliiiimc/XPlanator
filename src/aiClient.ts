@@ -5,6 +5,7 @@ import {
   ModelProvider,
   OllamaGenerateResponse,
   OllamaStatus,
+  UiLanguage,
   OllamaTagsResponse
 } from "./types";
 
@@ -123,6 +124,7 @@ export class AiClient {
     const response = await this.requestJson<OllamaGenerateResponse>(
       `${config.ollamaUrl.replace(/\/$/, "")}/api/generate`,
       config.timeoutSeconds,
+      config.language,
       {
         method: "POST",
         body: JSON.stringify(ollamaRequest)
@@ -130,7 +132,7 @@ export class AiClient {
     );
 
     if (!response.response?.trim()) {
-      throw new Error("Ollama a renvoye une reponse vide.");
+      throw new Error(localizeAiError(config.language, "empty_response", getProviderLabel("ollama")));
     }
 
     return response.response.trim();
@@ -140,6 +142,7 @@ export class AiClient {
     const response = await this.requestJson<OllamaTagsResponse>(
       `${config.ollamaUrl.replace(/\/$/, "")}/api/tags`,
       config.timeoutSeconds,
+      config.language,
       {
         method: "GET"
       }
@@ -158,10 +161,11 @@ export class AiClient {
   }
 
   private async generateWithOpenAi(config: ExtensionConfig, request: ProviderRequest): Promise<string> {
-    const apiKey = await this.requireApiKey("openai");
+    const apiKey = await this.requireApiKey("openai", config.language);
     const response = await this.requestJson<OpenAiResponse>(
       `${config.openAiBaseUrl.replace(/\/$/, "")}/responses`,
       config.timeoutSeconds,
+      config.language,
       {
         method: "POST",
         headers: {
@@ -183,17 +187,18 @@ export class AiClient {
         .join("\n");
 
     if (!output?.trim()) {
-      throw new Error("OpenAI/Codex a renvoye une reponse vide.");
+      throw new Error(localizeAiError(config.language, "empty_response", getProviderLabel("openai")));
     }
 
     return output.trim();
   }
 
   private async generateWithGemini(config: ExtensionConfig, request: ProviderRequest): Promise<string> {
-    const apiKey = await this.requireApiKey("gemini");
+    const apiKey = await this.requireApiKey("gemini", config.language);
     const response = await this.requestJson<GeminiResponse>(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`,
       config.timeoutSeconds,
+      config.language,
       {
         method: "POST",
         headers: {
@@ -219,15 +224,15 @@ export class AiClient {
       .join("\n");
 
     if (!output?.trim()) {
-      throw new Error("Gemini a renvoye une reponse vide.");
+      throw new Error(localizeAiError(config.language, "empty_response", getProviderLabel("gemini")));
     }
 
     return output.trim();
   }
 
   private async generateWithAnthropic(config: ExtensionConfig, request: ProviderRequest): Promise<string> {
-    const apiKey = await this.requireApiKey("anthropic");
-    const response = await this.requestJson<AnthropicResponse>("https://api.anthropic.com/v1/messages", config.timeoutSeconds, {
+    const apiKey = await this.requireApiKey("anthropic", config.language);
+    const response = await this.requestJson<AnthropicResponse>("https://api.anthropic.com/v1/messages", config.timeoutSeconds, config.language, {
       method: "POST",
       headers: {
         "x-api-key": apiKey,
@@ -250,23 +255,23 @@ export class AiClient {
       .join("\n");
 
     if (!output?.trim()) {
-      throw new Error("Claude a renvoye une reponse vide.");
+      throw new Error(localizeAiError(config.language, "empty_response", getProviderLabel("anthropic")));
     }
 
     return output.trim();
   }
 
-  private async requireApiKey(provider: ModelProvider): Promise<string> {
+  private async requireApiKey(provider: ModelProvider, language: UiLanguage): Promise<string> {
     const apiKey = await this.secrets.get(getSecretKey(provider));
 
     if (!apiKey?.trim()) {
-      throw new Error(`Aucune cle API n'est configuree pour ${getProviderLabel(provider)}.`);
+      throw new Error(localizeAiError(language, "missing_api_key", getProviderLabel(provider)));
     }
 
     return apiKey;
   }
 
-  private async requestJson<T>(url: string, timeoutSeconds: number, init: RequestInit): Promise<T> {
+  private async requestJson<T>(url: string, timeoutSeconds: number, language: UiLanguage, init: RequestInit): Promise<T> {
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
 
@@ -280,19 +285,19 @@ export class AiClient {
         signal: controller.signal
       });
       const responseText = await response.text();
-      const payload = parseJson<T & { error?: string | { message?: string } }>(responseText);
+      const payload = parseJson<T & { error?: string | { message?: string } }>(responseText, language);
 
       if (!response.ok) {
-        throw new Error(mapHttpError(url, response.status, payload?.error));
+        throw new Error(mapHttpError(language, url, response.status, payload?.error));
       }
 
       if (payload?.error) {
-        throw new Error(mapPayloadError(payload.error));
+        throw new Error(mapPayloadError(language, payload.error));
       }
 
       return payload;
     } catch (error) {
-      throw normalizeProviderError(error);
+      throw normalizeProviderError(language, error);
     } finally {
       clearTimeout(timeoutHandle);
     }
@@ -317,33 +322,33 @@ function getProviderLabel(provider: ModelProvider): string {
   }
 }
 
-function parseJson<T>(value: string): T {
+function parseJson<T>(value: string, language: UiLanguage): T {
   try {
     return JSON.parse(value) as T;
   } catch {
-    throw new Error("Le fournisseur a renvoye une reponse qui n'est pas un JSON valide.");
+    throw new Error(localizeAiError(language, "invalid_json"));
   }
 }
 
-function mapHttpError(url: string, status: number, error?: string | { message?: string }): string {
-  const providerError = mapPayloadError(error);
+function mapHttpError(language: UiLanguage, url: string, status: number, error?: string | { message?: string }): string {
+  const providerError = mapPayloadError(language, error);
 
   if (providerError) {
     return providerError;
   }
 
   if (url.includes("/api/generate") && status === 404) {
-    return "Le modele Ollama configure semble absent. Essayez de le telecharger avec ollama pull.";
+    return localizeAiError(language, "missing_ollama_model");
   }
 
   if (status === 401 || status === 403) {
-    return "La cle API est absente, invalide ou refusee par le fournisseur.";
+    return localizeAiError(language, "invalid_api_key");
   }
 
-  return `Le fournisseur IA a renvoye une erreur HTTP ${status}.`;
+  return localizeAiError(language, "http_error", String(status));
 }
 
-function mapPayloadError(error?: string | { message?: string }): string {
+function mapPayloadError(language: UiLanguage, error?: string | { message?: string }): string {
   if (!error) {
     return "";
   }
@@ -357,16 +362,16 @@ function mapPayloadError(error?: string | { message?: string }): string {
   const normalized = message.toLowerCase();
 
   if (normalized.includes("model") && normalized.includes("not found")) {
-    return "Le modele configure semble absent ou invalide pour ce fournisseur.";
+    return localizeAiError(language, "missing_model");
   }
 
   return message;
 }
 
-function normalizeProviderError(error: unknown): Error {
+function normalizeProviderError(language: UiLanguage, error: unknown): Error {
   if (error instanceof Error) {
     if (error.name === "AbortError") {
-      return new Error("Le modele met trop de temps a repondre. Essayez un modele plus leger ou augmentez le timeout dans les parametres.");
+      return new Error(localizeAiError(language, "timeout"));
     }
 
     if (
@@ -374,11 +379,57 @@ function normalizeProviderError(error: unknown): Error {
       error.message.includes("fetch failed") ||
       error.message.includes("ENOTFOUND")
     ) {
-      return new Error("Impossible de contacter le fournisseur IA. Verifiez la connexion, l'URL ou la cle API.");
+      return new Error(localizeAiError(language, "provider_unreachable"));
     }
 
     return error;
   }
 
-  return new Error("Impossible de contacter le fournisseur IA.");
+  return new Error(localizeAiError(language, "provider_unreachable"));
+}
+
+type AiErrorKey =
+  | "empty_response"
+  | "missing_api_key"
+  | "invalid_json"
+  | "missing_ollama_model"
+  | "invalid_api_key"
+  | "http_error"
+  | "missing_model"
+  | "timeout"
+  | "provider_unreachable";
+
+function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string): string {
+  const messages: Record<UiLanguage, Record<AiErrorKey, string>> = {
+    fr: {
+      empty_response: "{detail} a renvoye une reponse vide.",
+      missing_api_key: "Aucune cle API n'est configuree pour {detail}.",
+      invalid_json: "Le fournisseur a renvoye une reponse qui n'est pas un JSON valide.",
+      missing_ollama_model: "Le modele Ollama configure semble absent. Essayez de le telecharger avec ollama pull.",
+      invalid_api_key: "La cle API est absente, invalide ou refusee par le fournisseur.",
+      http_error: "Le fournisseur IA a renvoye une erreur HTTP {detail}.",
+      missing_model: "Le modele configure semble absent ou invalide pour ce fournisseur.",
+      timeout: "Le modele met trop de temps a repondre. Essayez un modele plus leger ou augmentez le timeout dans les parametres.",
+      provider_unreachable: "Impossible de contacter le fournisseur IA. Verifiez la connexion, l'URL ou la cle API."
+    },
+    en: {
+      empty_response: "{detail} returned an empty response.",
+      missing_api_key: "No API key is configured for {detail}.",
+      invalid_json: "The provider returned a response that is not valid JSON.",
+      missing_ollama_model: "The configured Ollama model seems missing. Try downloading it with ollama pull.",
+      invalid_api_key: "The API key is missing, invalid, or rejected by the provider.",
+      http_error: "The AI provider returned HTTP error {detail}.",
+      missing_model: "The configured model seems missing or invalid for this provider.",
+      timeout: "The model is taking too long to respond. Try a lighter model or increase the timeout in settings.",
+      provider_unreachable: "Unable to reach the AI provider. Check the connection, URL, or API key."
+    }
+  };
+
+  const template = messages[language][key] ?? messages.en[key];
+
+  if (!detail) {
+    return template;
+  }
+
+  return template.replace("{detail}", detail);
 }
