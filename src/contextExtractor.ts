@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { CodeContext, ExtensionConfig, RelatedSnippet } from "./types";
+import { shouldSkipSameFileRelatedRange } from "./contextSnippetProximity";
 
 const MAX_SELECTED_CHARACTERS = 12000;
 
@@ -56,7 +57,7 @@ export async function getCodeContext(
   const contextEndLine = Math.min(document.lineCount - 1, targetEndLine + linesBelow);
 
   const surroundingCode = buildNumberedSnippet(document, contextStartLine, contextEndLine);
-  const relatedSnippets = await collectRelatedSnippets(document, selection.active, config);
+  const relatedSnippets = await collectRelatedSnippets(document, targetRange, config);
 
   return {
     fileName: path.basename(document.fileName),
@@ -98,7 +99,7 @@ function clampContextLines(value: number): number {
 
 async function collectRelatedSnippets(
   document: vscode.TextDocument,
-  position: vscode.Position,
+  targetRange: vscode.Range,
   config: Pick<
     ExtensionConfig,
     "includeRelatedContext" | "maxRelatedSnippets" | "maxRelatedLinesPerSnippet" | "maxContextCharacters"
@@ -108,7 +109,7 @@ async function collectRelatedSnippets(
     return [];
   }
 
-  const relatedLocations = await getRelatedLocations(document.uri, position);
+  const relatedLocations = await getRelatedLocations(document.uri, targetRange.start);
   if (!relatedLocations.length) {
     return [];
   }
@@ -124,8 +125,20 @@ async function collectRelatedSnippets(
       break;
     }
 
-    if (!isSafeWorkspaceUri(candidate.uri) || candidate.uri.toString() === document.uri.toString()) {
+    if (!isSafeWorkspaceUri(candidate.uri)) {
       continue;
+    }
+
+    if (candidate.uri.toString() === document.uri.toString()) {
+      const shouldSkipSameFile = shouldSkipSameFileRelatedRange(
+        targetRange.start.line,
+        targetRange.end.line,
+        candidate.range.start.line,
+        candidate.range.end.line
+      );
+      if (shouldSkipSameFile) {
+        continue;
+      }
     }
 
     try {
