@@ -7,8 +7,6 @@ This roadmap keeps XPlanator focused on code understanding, not code generation.
 - Add a first-run setup screen
 - Add screenshots and an animated GIF for GitHub and the VS Code Marketplace
 - Add parser tests for section extraction and short takeaways
-- Add a clearer error state when a provider key is missing
-- Add a provider connection status indicator in the settings view
 - Add Open VSX and VS Code Marketplace packaging notes
 
 ## Product Direction

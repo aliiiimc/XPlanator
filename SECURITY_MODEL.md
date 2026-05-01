@@ -16,6 +16,8 @@ This document explains how API keys and code snippets are handled.
 - API keys are only read when making a request to the selected provider.
 - The configured provider request timeout applies to all AI provider HTTP requests.
 - Saved keys can be deleted from the XPlanator settings panel.
+- Non-local custom provider URLs must use HTTPS.
+- Endpoint URL changes require an explicit confirmation before they are saved.
 
 ## API Key Flow
 
@@ -26,6 +28,7 @@ This document explains how API keys and code snippets are handled.
 5. Later, when a cloud provider is used, the extension reads the key from `SecretStorage`.
 6. The key is added to the HTTPS request header for that provider.
 7. The key is not included in the prompt, response, logs, README, settings, or webview HTML.
+8. The user can verify provider connectivity from the settings panel before saving changes.
 
 ## What Is Sent To Providers
 

@@ -30,6 +30,11 @@ export interface ModelSettingsInput {
   clearApiKey?: boolean;
 }
 
+export interface ProviderConnectionStatus {
+  kind: "idle" | "success" | "error";
+  message: string;
+}
+
 export interface RelatedSnippet {
   fileName: string;
   filePath: string;

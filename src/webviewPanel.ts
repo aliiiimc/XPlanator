@@ -1,8 +1,16 @@
 import * as vscode from "vscode";
-import { CodeContext, ModelSettingsInput, UiLanguage } from "./types";
+import { CodeContext, ModelSettingsInput, ProviderConnectionStatus, UiLanguage } from "./types";
 
 type SectionKey = "summary" | "details" | "takeaway";
-type PanelAction = "moreSimple" | "moreDetailed" | "retry" | "settings" | "saveSettings" | "cancelSettings" | `copy:${SectionKey}`;
+type PanelAction =
+  | "moreSimple"
+  | "moreDetailed"
+  | "retry"
+  | "settings"
+  | "saveSettings"
+  | "cancelSettings"
+  | "checkSettingsConnection"
+  | `copy:${SectionKey}`;
 
 export interface PanelMessage {
   action?: PanelAction;
@@ -27,6 +35,7 @@ interface TakeawayNormalization {
 
 interface SettingsViewModel extends ModelSettingsInput {
   hasApiKey: boolean;
+  providerStatus: ProviderConnectionStatus;
 }
 
 export class ExplanationPanel {
@@ -517,6 +526,37 @@ export class ExplanationPanel {
         color: var(--vscode-descriptionForeground);
       }
 
+      .statusRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 14px;
+        padding: 10px 12px;
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--vscode-editor-background) 72%, var(--vscode-editorWidget-background));
+      }
+
+      .statusLabel {
+        font-size: 11.5px;
+        font-weight: 800;
+        color: var(--vscode-descriptionForeground);
+      }
+
+      .statusMessage {
+        font-size: 12.5px;
+        line-height: 1.5;
+      }
+
+      .statusMessage.statusSuccess {
+        color: var(--vscode-testing-iconPassed);
+      }
+
+      .statusMessage.statusError {
+        color: var(--vscode-errorForeground);
+      }
+
       @keyframes sweep {
         to {
           transform: translateX(100%);
@@ -564,22 +604,23 @@ export class ExplanationPanel {
         gemini: "gemini-2.5-flash",
         anthropic: "claude-sonnet-4-5"
       };
+      const collectSettings = () => ({
+        provider: document.querySelector("#provider")?.value,
+        model: document.querySelector("#model")?.value,
+        ollamaUrl: document.querySelector("#ollamaUrl")?.value,
+        openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
+        apiKey: document.querySelector("#apiKey")?.value,
+        clearApiKey: document.querySelector("#clearApiKey")?.checked
+      });
       const actions = document.querySelectorAll("[data-action]");
       for (const button of actions) {
         button.addEventListener("click", () => {
           const action = button.getAttribute("data-action");
 
-          if (action === "saveSettings") {
+          if (action === "saveSettings" || action === "checkSettingsConnection") {
             vscode.postMessage({
               action,
-              settings: {
-                provider: document.querySelector("#provider")?.value,
-                model: document.querySelector("#model")?.value,
-                ollamaUrl: document.querySelector("#ollamaUrl")?.value,
-                openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
-                apiKey: document.querySelector("#apiKey")?.value,
-                clearApiKey: document.querySelector("#clearApiKey")?.checked
-              }
+              settings: collectSettings()
             });
             return;
           }
@@ -602,6 +643,12 @@ export class ExplanationPanel {
 
 function renderSettingsView(settings: SettingsViewModel, text: Record<string, string>): string {
   const keyStatus = settings.provider === "ollama" ? text.apiKeyNotNeeded : settings.hasApiKey ? text.apiKeyStored : text.apiKeyMissing;
+  const statusClass =
+    settings.providerStatus.kind === "success"
+      ? "statusSuccess"
+      : settings.providerStatus.kind === "error"
+        ? "statusError"
+        : "";
 
   return `<section class="settingsView">
     <div class="settingsGrid">
@@ -628,14 +675,21 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       </div>
       <div class="field fieldWide">
         <label for="apiKey">${escapeHtml(text.apiKey)} - ${escapeHtml(keyStatus)}</label>
-        <input id="apiKey" type="password" value="" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" />
+        <input id="apiKey" type="password" value="${escapeHtml(settings.apiKey ?? "")}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" />
       </div>
       <div class="field fieldWide">
         <label>
-          <input id="clearApiKey" type="checkbox" />
+          <input id="clearApiKey" type="checkbox" ${settings.clearApiKey ? "checked" : ""} />
           ${escapeHtml(text.clearApiKey)}
         </label>
       </div>
+    </div>
+    <div class="statusRow">
+      <div>
+        <div class="statusLabel">${escapeHtml(text.connectionStatus)}</div>
+        <div class="statusMessage ${statusClass}">${escapeHtml(settings.providerStatus.message)}</div>
+      </div>
+      <button class="secondary" data-action="checkSettingsConnection">${escapeHtml(text.checkConnection)}</button>
     </div>
     <div class="providerNote">${escapeHtml(text.cloudPrivacyNote)}</div>
     <div class="providerNote">${escapeHtml(text.apiKeySecurityNote)}</div>
@@ -891,6 +945,8 @@ function getUiText(language: UiLanguage): Record<string, string> {
       apiKeyStored: "key already saved",
       apiKeyMissing: "no key saved",
       clearApiKey: "Delete the saved API key for this provider",
+      connectionStatus: "Connection status",
+      checkConnection: "Check connection",
       cloudPrivacyNote: "Cloud providers receive the code you ask XPlanator to explain. Use Ollama if you want everything to stay local.",
       apiKeySecurityNote: "API keys are never displayed again after saving and are stored with VS Code SecretStorage.",
       saveSettings: "Save",
@@ -934,6 +990,8 @@ function getUiText(language: UiLanguage): Record<string, string> {
     apiKeyStored: "clé déjà enregistrée",
     apiKeyMissing: "aucune clé enregistrée",
     clearApiKey: "Supprimer la clé API enregistrée pour ce fournisseur",
+    connectionStatus: "Etat de la connexion",
+    checkConnection: "Verifier la connexion",
     cloudPrivacyNote:
       "Les fournisseurs cloud reçoivent le code que tu demandes à XPlanator d'expliquer. Utilise Ollama si tu veux tout garder en local.",
     apiKeySecurityNote: "Les clés API ne sont jamais réaffichées après l'enregistrement et sont stockées avec le SecretStorage de VS Code.",

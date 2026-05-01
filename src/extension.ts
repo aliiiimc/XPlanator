@@ -9,6 +9,7 @@ import {
   LastExplanationState,
   ModelProvider,
   ModelSettingsInput,
+  ProviderConnectionStatus,
   UiLanguage
 } from "./types";
 import { ExplanationPanel, PanelMessage } from "./webviewPanel";
@@ -18,6 +19,7 @@ type CopySection = "summary" | "details" | "takeaway";
 let lastExplanationState: LastExplanationState | undefined;
 let lastAttemptContext: CodeContext | undefined;
 let lastAttemptMode: ExplanationMode = "quick";
+let latestProviderStatus: ProviderConnectionStatus | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   const aiClient = new AiClient(context.secrets);
@@ -67,6 +69,11 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
+    if (action === "checkSettingsConnection") {
+      await checkSettingsConnection(panel, aiClient, message.settings);
+      return;
+    }
+
     if (action === "cancelSettings") {
       if (lastExplanationState) {
         panel.showExplanation(
@@ -84,8 +91,11 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     if (action === "saveSettings") {
-      await saveSettings(message.settings, aiClient);
-      await showSettings(panel, aiClient);
+      const saved = await saveSettings(message.settings, aiClient);
+
+      if (saved) {
+        await showSettings(panel, aiClient);
+      }
     }
   });
 
@@ -184,6 +194,14 @@ async function explainFromContext(
   aiClient: AiClient
 ): Promise<void> {
   const config = getConfig();
+
+  if (config.provider !== "ollama" && !(await aiClient.hasApiKey(config.provider))) {
+    const message = localize(config.language, "missingProviderKeyDetails", getProviderLabel(config.provider));
+    panel.showError(message, config.language, codeContext);
+    vscode.window.showErrorMessage(message);
+    return;
+  }
+
   const prompt = buildPrompt(
     {
       context: codeContext,
@@ -240,26 +258,127 @@ async function showSettings(panel: ExplanationPanel, aiClient: AiClient): Promis
       model: config.model,
       ollamaUrl: config.ollamaUrl,
       openAiBaseUrl: config.openAiBaseUrl,
-      hasApiKey: await aiClient.hasApiKey(config.provider)
+      hasApiKey: await aiClient.hasApiKey(config.provider),
+      apiKey: "",
+      clearApiKey: false,
+      providerStatus: latestProviderStatus ?? {
+        kind: "idle",
+        message: localize(config.language, "providerStatusNotChecked")
+      }
     },
     config.language
   );
 }
 
-async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: AiClient): Promise<void> {
+async function checkSettingsConnection(
+  panel: ExplanationPanel,
+  aiClient: AiClient,
+  settings: ModelSettingsInput | undefined
+): Promise<void> {
+  const previewConfig = buildConfigFromSettings(settings);
+  const apiKeyOverride = settings?.apiKey?.trim() || undefined;
+
+  try {
+    validateEndpointUrl(previewConfig.language, previewConfig.ollamaUrl, localize(previewConfig.language, "ollamaEndpointLabel"));
+    validateEndpointUrl(previewConfig.language, previewConfig.openAiBaseUrl, localize(previewConfig.language, "openAiEndpointLabel"));
+
+    if (previewConfig.provider !== "ollama" && !apiKeyOverride && !(await aiClient.hasApiKey(previewConfig.provider))) {
+      latestProviderStatus = {
+        kind: "error",
+        message: localize(previewConfig.language, "missingProviderKeyDetails", getProviderLabel(previewConfig.provider))
+      };
+    } else {
+      const status = await aiClient.checkConnection(previewConfig, apiKeyOverride);
+      const successMessage =
+        previewConfig.provider === "ollama" && status.models.length > 0
+          ? localize(previewConfig.language, "providerStatusConnectedWithModel", status.models[0])
+          : localize(previewConfig.language, "providerStatusConnected");
+
+      latestProviderStatus = {
+        kind: "success",
+        message: successMessage
+      };
+    }
+  } catch (error) {
+    latestProviderStatus = {
+      kind: "error",
+      message: error instanceof Error ? error.message : localize(previewConfig.language, "providerStatusFailed")
+    };
+  }
+
+  await showSettingsDraft(panel, aiClient, settings, previewConfig.language);
+}
+
+async function showSettingsDraft(
+  panel: ExplanationPanel,
+  aiClient: AiClient,
+  settings: ModelSettingsInput | undefined,
+  language: UiLanguage
+): Promise<void> {
+  const previewConfig = buildConfigFromSettings(settings);
+
+  panel.showSettings(
+    {
+      provider: previewConfig.provider,
+      model: previewConfig.model,
+      ollamaUrl: previewConfig.ollamaUrl,
+      openAiBaseUrl: previewConfig.openAiBaseUrl,
+      hasApiKey: await aiClient.hasApiKey(previewConfig.provider),
+      apiKey: settings?.apiKey ?? "",
+      clearApiKey: settings?.clearApiKey ?? false,
+      providerStatus: latestProviderStatus ?? {
+        kind: "idle",
+        message: localize(language, "providerStatusNotChecked")
+      }
+    },
+    language
+  );
+}
+
+async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: AiClient): Promise<boolean> {
   const config = vscode.workspace.getConfiguration("explainCode");
+  const language = getConfig().language;
   const provider = normalizeProvider(settings?.provider ?? "ollama");
   const model = normalizeModel(settings?.model, provider);
   const ollamaUrl = settings?.ollamaUrl?.trim() || "http://localhost:11434";
   const openAiBaseUrl = settings?.openAiBaseUrl?.trim() || "https://api.openai.com/v1";
+
+  validateEndpointUrl(language, ollamaUrl, localize(language, "ollamaEndpointLabel"));
+  validateEndpointUrl(language, openAiBaseUrl, localize(language, "openAiEndpointLabel"));
+
+  const currentOllamaUrl = config.get<string>("ollamaUrl", "http://localhost:11434");
+  const currentOpenAiBaseUrl = config.get<string>("openAiBaseUrl", "https://api.openai.com/v1");
+  const endpointChanges: string[] = [];
+
+  if (hasEndpointChanged(currentOllamaUrl, ollamaUrl)) {
+    endpointChanges.push(localize(language, "ollamaEndpointLabel"));
+  }
+
+  if (hasEndpointChanged(currentOpenAiBaseUrl, openAiBaseUrl)) {
+    endpointChanges.push(localize(language, "openAiEndpointLabel"));
+  }
+
+  if (endpointChanges.length > 0) {
+    const confirmed = await confirmEndpointSettingsChange(language, endpointChanges);
+
+    if (!confirmed) {
+      vscode.window.showInformationMessage(localize(language, "settingsChangeCanceled"));
+      return false;
+    }
+  }
 
   await config.update("provider", provider, vscode.ConfigurationTarget.Global);
   await config.update("model", model, vscode.ConfigurationTarget.Global);
   await config.update("ollamaUrl", ollamaUrl, vscode.ConfigurationTarget.Global);
   await config.update("openAiBaseUrl", openAiBaseUrl, vscode.ConfigurationTarget.Global);
   await aiClient.saveApiKey(provider, settings?.apiKey, settings?.clearApiKey);
+  latestProviderStatus = {
+    kind: "idle",
+    message: localize(language, "providerStatusNotChecked")
+  };
 
-  vscode.window.showInformationMessage(localize(getConfig().language, "settingsSaved"));
+  vscode.window.showInformationMessage(localize(language, "settingsSaved"));
+  return true;
 }
 
 function getConfig(): ExtensionConfig {
@@ -272,14 +391,14 @@ function getConfig(): ExtensionConfig {
     ollamaUrl: config.get<string>("ollamaUrl", "http://localhost:11434"),
     openAiBaseUrl: config.get<string>("openAiBaseUrl", "https://api.openai.com/v1"),
     model: normalizeModel(config.get<string>("model", ""), provider),
-    maxSurroundingLines: config.get<number>("maxSurroundingLines", 60),
+    maxSurroundingLines: config.get<number>("maxSurroundingLines", 20),
     responseStyle: config.get<ExtensionConfig["responseStyle"]>("responseStyle", "beginner"),
     language,
-    timeoutSeconds: config.get<number>("timeoutSeconds", 30),
-    includeRelatedContext: config.get<boolean>("includeRelatedContext", true),
-    maxRelatedSnippets: config.get<number>("maxRelatedSnippets", 3),
+    timeoutSeconds: config.get<number>("timeoutSeconds", 60),
+    includeRelatedContext: config.get<boolean>("includeRelatedContext", false),
+    maxRelatedSnippets: config.get<number>("maxRelatedSnippets", 0),
     maxRelatedLinesPerSnippet: config.get<number>("maxRelatedLinesPerSnippet", 28),
-    maxContextCharacters: config.get<number>("maxContextCharacters", 24000)
+    maxContextCharacters: config.get<number>("maxContextCharacters", 8000)
   };
 }
 
@@ -313,6 +432,19 @@ function normalizeModel(value: string | undefined, provider: ModelProvider): str
     default:
       return "qwen2.5-coder";
   }
+}
+
+function buildConfigFromSettings(settings: ModelSettingsInput | undefined): ExtensionConfig {
+  const config = getConfig();
+  const provider = normalizeProvider(settings?.provider ?? config.provider);
+
+  return {
+    ...config,
+    provider,
+    model: normalizeModel(settings?.model, provider),
+    ollamaUrl: settings?.ollamaUrl?.trim() || config.ollamaUrl,
+    openAiBaseUrl: settings?.openAiBaseUrl?.trim() || config.openAiBaseUrl
+  };
 }
 
 function handleError(error: unknown): void {
@@ -351,6 +483,75 @@ function normalizeLanguage(value: string): UiLanguage {
   return value.toLowerCase().startsWith("en") ? "en" : "fr";
 }
 
+function getProviderLabel(provider: ModelProvider): string {
+  switch (provider) {
+    case "openai":
+      return "OpenAI/Codex";
+    case "gemini":
+      return "Gemini";
+    case "anthropic":
+      return "Claude";
+    case "ollama":
+    default:
+      return "Ollama";
+  }
+}
+
+function hasEndpointChanged(previousValue: string, nextValue: string): boolean {
+  const previous = normalizeEndpointForComparison(previousValue);
+  const next = normalizeEndpointForComparison(nextValue);
+  return previous !== next;
+}
+
+function normalizeEndpointForComparison(value: string): string {
+  const normalized = value.trim();
+
+  try {
+    const parsed = new URL(normalized);
+    const path = parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+    const query = parsed.search;
+    return `${parsed.protocol}//${parsed.host}${path}${query}`;
+  } catch {
+    return normalized;
+  }
+}
+
+function validateEndpointUrl(language: UiLanguage, endpointUrl: string, endpointLabel: string): void {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(endpointUrl);
+  } catch {
+    throw new Error(localize(language, "endpointInvalidUrl", endpointLabel));
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(localize(language, "endpointInvalidProtocol", endpointLabel));
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "0.0.0.0";
+
+  if (!isLocalHost && parsed.protocol !== "https:") {
+    throw new Error(localize(language, "endpointHttpsRequired", endpointLabel));
+  }
+}
+
+async function confirmEndpointSettingsChange(language: UiLanguage, endpointChanges: string[]): Promise<boolean> {
+  const endpoints = endpointChanges.join(", ");
+  const confirmLabel = localize(language, "confirmEndpointChanges");
+  const selected = await vscode.window.showWarningMessage(
+    localize(language, "endpointChangeWarning", endpoints),
+    {
+      modal: true,
+      detail: localize(language, "endpointChangeWarningDetail")
+    },
+    confirmLabel
+  );
+
+  return selected === confirmLabel;
+}
+
 function localize(language: UiLanguage, key: string, modelName?: string): string {
   const fr: Record<string, string> = {
     noExplanationToCopy: "Aucune explication a copier pour le moment.",
@@ -365,12 +566,26 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     providerNotRunning: "Le fournisseur IA ne repond pas. Verifiez Ollama, la connexion, le modele ou la cle API.",
     loadingWithProvider: "Le code est en cours d'analyse avec le fournisseur IA...",
     settingsSaved: "Parametres enregistres.",
+    settingsChangeCanceled: "Modification des parametres annulee.",
     progressTitle: "Explain Code",
     unknownError: "Une erreur inconnue est survenue.",
+    missingProviderKeyDetails: "Aucune cle API n'est enregistree pour {modelName}. Ouvrez les parametres, ajoutez une cle, puis reessayez, ou repassez sur Ollama.",
+    providerStatusNotChecked: "Connexion non verifiee.",
+    providerStatusConnected: "Connexion reussie.",
+    providerStatusConnectedWithModel: "Connexion reussie. Modele detecte : {modelName}.",
+    providerStatusFailed: "Echec de la verification de connexion.",
     statusExplainSelection: "Expliquer la selection",
     statusExplainHere: "Expliquer ici",
     statusTooltipSelection: "XPlanator : expliquer le code selectionne",
-    statusTooltipCursor: "XPlanator : expliquer la ligne ou le symbole sous le curseur"
+    statusTooltipCursor: "XPlanator : expliquer la ligne ou le symbole sous le curseur",
+    ollamaEndpointLabel: "URL Ollama",
+    openAiEndpointLabel: "URL OpenAI",
+    endpointInvalidUrl: "{modelName} est invalide. Entrez une URL complete (http://... ou https://...).",
+    endpointInvalidProtocol: "{modelName} doit utiliser http:// ou https://.",
+    endpointHttpsRequired: "{modelName} doit utiliser HTTPS pour les hotes non locaux.",
+    endpointChangeWarning: "Vous allez modifier {modelName}. Continuez-vous ?",
+    endpointChangeWarningDetail: "Les changements d'URL peuvent rediriger vos requetes et credentials vers un autre endpoint.",
+    confirmEndpointChanges: "Oui, enregistrer"
   };
 
   const en: Record<string, string> = {
@@ -386,13 +601,33 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     providerNotRunning: "The AI provider is not responding. Check Ollama, the connection, the model, or the API key.",
     loadingWithProvider: "Analyzing code with the AI provider...",
     settingsSaved: "Settings saved.",
+    settingsChangeCanceled: "Settings update canceled.",
     progressTitle: "Explain Code",
     unknownError: "An unknown error occurred.",
+    missingProviderKeyDetails: "No API key is saved for {modelName}. Open Settings, add a key, then retry, or switch back to Ollama.",
+    providerStatusNotChecked: "Connection not checked yet.",
+    providerStatusConnected: "Connection successful.",
+    providerStatusConnectedWithModel: "Connection successful. Detected model: {modelName}.",
+    providerStatusFailed: "Connection check failed.",
     statusExplainSelection: "Explain selection",
     statusExplainHere: "Explain here",
     statusTooltipSelection: "XPlanator: explain the selected code",
-    statusTooltipCursor: "XPlanator: explain the current line or symbol under the cursor"
+    statusTooltipCursor: "XPlanator: explain the current line or symbol under the cursor",
+    ollamaEndpointLabel: "Ollama URL",
+    openAiEndpointLabel: "OpenAI URL",
+    endpointInvalidUrl: "{modelName} is invalid. Enter a full URL (http://... or https://...).",
+    endpointInvalidProtocol: "{modelName} must use http:// or https://.",
+    endpointHttpsRequired: "{modelName} must use HTTPS for non-local hosts.",
+    endpointChangeWarning: "You are about to change {modelName}. Continue?",
+    endpointChangeWarningDetail: "Changing endpoint URLs can redirect requests and credentials to a different destination.",
+    confirmEndpointChanges: "Yes, save"
   };
 
-  return (language === "en" ? en : fr)[key] ?? key;
+  const text = (language === "en" ? en : fr)[key] ?? key;
+
+  if (!modelName) {
+    return text;
+  }
+
+  return text.replace("{modelName}", modelName);
 }

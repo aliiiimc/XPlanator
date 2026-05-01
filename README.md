@@ -123,7 +123,8 @@ ollama pull qwen2.5-coder
 3. Choose `Ollama local`, `OpenAI / Codex`, `Gemini`, or `Claude`.
 4. Enter the model name.
 5. For cloud providers, paste your API key.
-6. Click `Enregistrer`.
+6. Use `Check connection` if you want to verify the current provider from the settings panel.
+7. Click `Enregistrer`.
 
 ## VS Code Settings
 
@@ -138,6 +139,8 @@ ollama pull qwen2.5-coder
 - `explainCode.maxRelatedSnippets`: maximum related snippets
 - `explainCode.maxRelatedLinesPerSnippet`: maximum lines per related snippet
 - `explainCode.maxContextCharacters`: context character budget
+
+Non-local provider URLs must use `https`. Local Ollama-style endpoints such as `localhost` and `127.0.0.1` may still use `http`.
 
 ## Commands
 

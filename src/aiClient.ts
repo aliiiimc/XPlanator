@@ -53,21 +53,21 @@ interface AnthropicResponse {
 export class AiClient {
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
-  async generate(config: ExtensionConfig, request: ProviderRequest): Promise<string> {
+  async generate(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
     switch (config.provider) {
       case "openai":
-        return this.generateWithOpenAi(config, request);
+        return this.generateWithOpenAi(config, request, apiKeyOverride);
       case "gemini":
-        return this.generateWithGemini(config, request);
+        return this.generateWithGemini(config, request, apiKeyOverride);
       case "anthropic":
-        return this.generateWithAnthropic(config, request);
+        return this.generateWithAnthropic(config, request, apiKeyOverride);
       case "ollama":
       default:
         return this.generateWithOllama(config, request);
     }
   }
 
-  async checkConnection(config: ExtensionConfig): Promise<OllamaStatus> {
+  async checkConnection(config: ExtensionConfig, apiKeyOverride?: string): Promise<OllamaStatus> {
     if (config.provider === "ollama") {
       return this.checkOllamaConnection(config);
     }
@@ -75,7 +75,7 @@ export class AiClient {
     await this.generate(config, {
       prompt: "Reply with exactly: ok",
       maxTokens: 16
-    });
+    }, apiKeyOverride);
 
     return {
       connected: true,
@@ -160,8 +160,8 @@ export class AiClient {
     };
   }
 
-  private async generateWithOpenAi(config: ExtensionConfig, request: ProviderRequest): Promise<string> {
-    const apiKey = await this.requireApiKey("openai", config.language);
+  private async generateWithOpenAi(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
+    const apiKey = await this.requireApiKey("openai", config.language, apiKeyOverride);
     const response = await this.requestJson<OpenAiResponse>(
       `${config.openAiBaseUrl.replace(/\/$/, "")}/responses`,
       config.timeoutSeconds,
@@ -193,8 +193,8 @@ export class AiClient {
     return output.trim();
   }
 
-  private async generateWithGemini(config: ExtensionConfig, request: ProviderRequest): Promise<string> {
-    const apiKey = await this.requireApiKey("gemini", config.language);
+  private async generateWithGemini(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
+    const apiKey = await this.requireApiKey("gemini", config.language, apiKeyOverride);
     const response = await this.requestJson<GeminiResponse>(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`,
       config.timeoutSeconds,
@@ -230,8 +230,8 @@ export class AiClient {
     return output.trim();
   }
 
-  private async generateWithAnthropic(config: ExtensionConfig, request: ProviderRequest): Promise<string> {
-    const apiKey = await this.requireApiKey("anthropic", config.language);
+  private async generateWithAnthropic(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
+    const apiKey = await this.requireApiKey("anthropic", config.language, apiKeyOverride);
     const response = await this.requestJson<AnthropicResponse>("https://api.anthropic.com/v1/messages", config.timeoutSeconds, config.language, {
       method: "POST",
       headers: {
@@ -261,8 +261,8 @@ export class AiClient {
     return output.trim();
   }
 
-  private async requireApiKey(provider: ModelProvider, language: UiLanguage): Promise<string> {
-    const apiKey = await this.secrets.get(getSecretKey(provider));
+  private async requireApiKey(provider: ModelProvider, language: UiLanguage, apiKeyOverride?: string): Promise<string> {
+    const apiKey = apiKeyOverride?.trim() || (await this.secrets.get(getSecretKey(provider)));
 
     if (!apiKey?.trim()) {
       throw new Error(localizeAiError(language, "missing_api_key", getProviderLabel(provider)));
@@ -272,6 +272,7 @@ export class AiClient {
   }
 
   private async requestJson<T>(url: string, timeoutSeconds: number, language: UiLanguage, init: RequestInit): Promise<T> {
+    validateEndpointPolicy(url, language);
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
 
@@ -392,6 +393,9 @@ type AiErrorKey =
   | "empty_response"
   | "missing_api_key"
   | "invalid_json"
+  | "invalid_endpoint_url"
+  | "invalid_endpoint_protocol"
+  | "endpoint_https_required"
   | "missing_ollama_model"
   | "invalid_api_key"
   | "http_error"
@@ -405,6 +409,9 @@ function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string)
       empty_response: "{detail} a renvoye une reponse vide.",
       missing_api_key: "Aucune cle API n'est configuree pour {detail}.",
       invalid_json: "Le fournisseur a renvoye une reponse qui n'est pas un JSON valide.",
+      invalid_endpoint_url: "L'URL du fournisseur configuree est invalide.",
+      invalid_endpoint_protocol: "L'URL du fournisseur doit utiliser http:// ou https://.",
+      endpoint_https_required: "Les URL de fournisseur non locales doivent utiliser HTTPS.",
       missing_ollama_model: "Le modele Ollama configure semble absent. Essayez de le telecharger avec ollama pull.",
       invalid_api_key: "La cle API est absente, invalide ou refusee par le fournisseur.",
       http_error: "Le fournisseur IA a renvoye une erreur HTTP {detail}.",
@@ -416,6 +423,9 @@ function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string)
       empty_response: "{detail} returned an empty response.",
       missing_api_key: "No API key is configured for {detail}.",
       invalid_json: "The provider returned a response that is not valid JSON.",
+      invalid_endpoint_url: "The configured provider URL is invalid.",
+      invalid_endpoint_protocol: "The provider URL must use http:// or https://.",
+      endpoint_https_required: "Non-local provider URLs must use HTTPS.",
       missing_ollama_model: "The configured Ollama model seems missing. Try downloading it with ollama pull.",
       invalid_api_key: "The API key is missing, invalid, or rejected by the provider.",
       http_error: "The AI provider returned HTTP error {detail}.",
@@ -432,4 +442,25 @@ function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string)
   }
 
   return template.replace("{detail}", detail);
+}
+
+function validateEndpointPolicy(url: string, language: UiLanguage): void {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(localizeAiError(language, "invalid_endpoint_url"));
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(localizeAiError(language, "invalid_endpoint_protocol"));
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "0.0.0.0";
+
+  if (!isLocalHost && parsed.protocol !== "https:") {
+    throw new Error(localizeAiError(language, "endpoint_https_required"));
+  }
 }
