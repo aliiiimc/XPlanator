@@ -14,6 +14,7 @@ This document explains how API keys and code snippets are handled.
 - API keys are never shown again after saving.
 - API keys are never logged by XPlanator.
 - API keys are only read when making a request to the selected provider.
+- The configured provider request timeout applies to all AI provider HTTP requests.
 - Saved keys can be deleted from the XPlanator settings panel.
 
 ## API Key Flow
