@@ -133,7 +133,7 @@ ollama pull qwen2.5-coder
 - `explainCode.model`: model name
 - `explainCode.responseStyle`: `simple`, `technical`, or `beginner`
 - `explainCode.language`: `fr` or `en`
-- `explainCode.timeoutSeconds`: request timeout
+- `explainCode.timeoutSeconds`: AI provider request timeout (applies to all providers)
 - `explainCode.includeRelatedContext`: include related snippets when available
 - `explainCode.maxRelatedSnippets`: maximum related snippets
 - `explainCode.maxRelatedLinesPerSnippet`: maximum lines per related snippet
