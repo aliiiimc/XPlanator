@@ -449,8 +449,8 @@ export class ExplanationPanel {
 
       .settingsFab {
         position: fixed;
-        left: 16px;
-        bottom: 16px;
+        right: 16px;
+        top: 16px;
         z-index: 10;
         border-radius: 999px;
         box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent);
@@ -594,14 +594,18 @@ export class ExplanationPanel {
         gemini: "gemini-2.5-flash",
         anthropic: "claude-sonnet-4-5"
       };
-      const collectSettings = () => ({
-        provider: document.querySelector("#provider")?.value,
-        model: document.querySelector("#model")?.value,
-        ollamaUrl: document.querySelector("#ollamaUrl")?.value,
-        openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
-        apiKey: document.querySelector("#apiKey")?.value,
-        clearApiKey: document.querySelector("#clearApiKey")?.checked
-      });
+      const collectSettings = () => {
+        const apiKeyInput = document.querySelector("#apiKey");
+        const isPlaceholder = apiKeyInput && apiKeyInput.getAttribute("data-key-saved") === "true" && apiKeyInput.value === "••••••••";
+        return {
+          provider: document.querySelector("#provider")?.value,
+          model: document.querySelector("#model")?.value,
+          ollamaUrl: document.querySelector("#ollamaUrl")?.value,
+          openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
+          apiKey: isPlaceholder ? "" : (apiKeyInput?.value ?? ""),
+          clearApiKey: document.querySelector("#clearApiKey")?.checked
+        };
+      };
       const actions = document.querySelectorAll("[data-action]");
       for (const button of actions) {
         button.addEventListener("click", () => {
@@ -665,7 +669,7 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       </div>
       <div class="field fieldWide">
         <label for="apiKey">${escapeHtml(text.apiKey)} - ${escapeHtml(keyStatus)}</label>
-        <input id="apiKey" type="password" value="${escapeHtml(settings.apiKey ?? "")}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" />
+        <input id="apiKey" type="password" value="${escapeHtml(settings.hasApiKey && !settings.apiKey ? "••••••••" : (settings.apiKey ?? ""))}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" data-key-saved="${settings.hasApiKey ? "true" : "false"}" />
       </div>
       <div class="field fieldWide">
         <label>

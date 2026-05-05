@@ -92,9 +92,15 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     if (action === "saveSettings") {
-      const saved = await saveSettings(message.settings, aiClient);
+      try {
+        const saved = await saveSettings(message.settings, aiClient);
 
-      if (saved) {
+        if (saved) {
+          await showSettings(panel, aiClient);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : localize(getConfig().language, "unknownError");
+        vscode.window.showErrorMessage(message);
         await showSettings(panel, aiClient);
       }
     }
