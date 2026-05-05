@@ -2,9 +2,20 @@ import { ExplanationMode, PromptInput, ResponseStyle } from "./types";
 
 export function buildPrompt(input: PromptInput, mode: ExplanationMode): string {
   const basePrompt = buildBasePrompt(input);
+  const lang = input.responseLanguage;
+  const isEnglish = lang.toLowerCase().startsWith("en");
 
   if (mode === "simple") {
-    return `${basePrompt}
+    return isEnglish
+      ? `${basePrompt}
+
+Additional instruction:
+Explain this code as if I were a complete beginner.
+Use very simple sentences.
+Avoid jargon.
+Use an analogy only if it really helps.
+Keep the response short.`
+      : `${basePrompt}
 
 Instruction supplementaire :
 Explique ce code comme si j'etais debutant complet.
@@ -15,9 +26,22 @@ Reponse courte.`;
   }
 
   if (mode === "detailed") {
-    const format = getResponseFormat(input.responseLanguage);
+    const format = getResponseFormat(lang);
+    return isEnglish
+      ? `${basePrompt}
 
-    return `${basePrompt}
+Additional instruction:
+Explain this code in more depth, but put this detail only in the ${format.detailsLabel} section.
+Describe in ${format.detailsLabel}:
+1. its role;
+2. its inputs;
+3. its outputs;
+4. the important steps;
+5. possible side effects;
+6. possible bugs or risks if you see any.
+Keep the ${format.takeawayLabel} section very short: a single reminder sentence, with no lists or new details.
+Stay educational and clear.`
+      : `${basePrompt}
 
 Instruction supplementaire :
 Explique ce code plus en profondeur, mais mets ce detail uniquement dans la section ${format.detailsLabel}.
@@ -37,13 +61,34 @@ Reste pedagogique et clair.`;
 
 function buildBasePrompt(input: PromptInput): string {
   const { context, responseLanguage, responseStyle } = input;
-  const styleInstruction = getStyleInstruction(responseStyle);
-  const symbolLine = context.symbolUnderCursor
-    ? `Symbole sous le curseur : ${context.symbolUnderCursor}`
-    : "Symbole sous le curseur : non detecte";
+  const isEnglish = responseLanguage.toLowerCase().startsWith("en");
+  const styleInstruction = getStyleInstruction(responseStyle, isEnglish);
   const format = getResponseFormat(responseLanguage);
+
+  const symbolLine = isEnglish
+    ? context.symbolUnderCursor
+      ? `Symbol under cursor: ${context.symbolUnderCursor}`
+      : "Symbol under cursor: not detected"
+    : context.symbolUnderCursor
+      ? `Symbole sous le curseur : ${context.symbolUnderCursor}`
+      : "Symbole sous le curseur : non detecte";
+
   const relatedContextBlock = context.relatedSnippets.length
-    ? `Contexte lie dans le workspace :
+    ? isEnglish
+      ? `Related context in workspace:
+${context.relatedSnippets
+  .map(
+    (snippet, index) => `Extract ${index + 1}:
+- Type: ${snippet.reason}
+- File: ${snippet.fileName}
+- Language: ${snippet.languageId}
+- Lines: ${snippet.startLine}-${snippet.endLine}
+\`\`\`
+${snippet.code}
+\`\`\``
+  )
+  .join("\n\n")}`
+      : `Contexte lie dans le workspace :
 ${context.relatedSnippets
   .map(
     (snippet, index) => `Extrait ${index + 1} :
@@ -56,7 +101,61 @@ ${snippet.code}
 \`\`\``
   )
   .join("\n\n")}`
-    : "Contexte lie dans le workspace : aucun extrait supplementaire utile n'a ete trouve.";
+    : isEnglish
+      ? "Related context in workspace: no useful additional extracts were found."
+      : "Contexte lie dans le workspace : aucun extrait supplementaire utile n'a ete trouve.";
+
+  if (isEnglish) {
+    return `You are an educational assistant that helps beginners understand code.
+Your role is not to modify code, but to explain it clearly.
+
+Rules:
+- Reply in ${responseLanguage}.
+- Be clear, simple, and direct.
+- Explain what the code does.
+- Explain why it probably exists.
+- If it's a function, explain its role, its inputs, and its output.
+- If it's a variable, explain what it represents.
+- If it's a line, explain what it does in context.
+- Don't be too long.
+- Don't give a useless general lecture.
+- If the context is insufficient, say so.
+- Don't pretend to be sure if you can't be.
+- If related extracts help, use them to explain dependencies or nearby calls.
+- Use plain text. Don't add bold markdown, no asterisks, no decorated lists around headings.
+- When a term is really important for understanding the code (function, variable, class, key concept), wrap it with [[double brackets]].
+- Don't overuse this highlighting: about 3 to 8 important terms maximum.
+- ${styleInstruction}
+
+Info:
+Language: ${context.languageId}
+File: ${context.fileName}
+Line: ${context.lineNumber}
+${symbolLine}
+
+Target code:
+\`\`\`
+${context.selectedCode}
+\`\`\`
+
+Surrounding context:
+\`\`\`
+${context.surroundingCode}
+\`\`\`
+
+${relatedContextBlock}
+
+Reply with exactly this format:
+
+${format.summaryLabel}:
+[very short explanation, 1 sentence]
+
+${format.detailsLabel}:
+[the main explanation. If the user asked for more detail, add it here only]
+
+${format.takeawayLabel}:
+[a single simple sentence that restates the main idea. No list. No new details]`;
+  }
 
   return `Tu es un assistant pedagogique qui aide des debutants a comprendre du code.
 Ton role n'est pas de modifier le code, mais de l'expliquer clairement.
@@ -109,7 +208,19 @@ ${format.takeawayLabel}:
 [une seule phrase simple qui reformule l'idee principale. Pas de liste. Pas de nouveaux details]`;
 }
 
-function getStyleInstruction(style: ResponseStyle): string {
+function getStyleInstruction(style: ResponseStyle, isEnglish: boolean): string {
+  if (isEnglish) {
+    switch (style) {
+      case "technical":
+        return "You can be a bit more technically precise, but keep it readable for a motivated beginner.";
+      case "simple":
+        return "Stay very compact and very simple, even if you have to sacrifice detail.";
+      case "beginner":
+      default:
+        return "Speak as if to a beginner who reads AI-generated code and just wants to understand the essentials.";
+    }
+  }
+
   switch (style) {
     case "technical":
       return "Tu peux etre un peu plus precis techniquement, mais reste lisible pour un debutant motive.";

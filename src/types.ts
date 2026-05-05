@@ -103,3 +103,17 @@ export interface LastExplanationState {
   explanation: string;
   mode: ExplanationMode;
 }
+
+export function getProviderLabel(provider: ModelProvider): string {
+  switch (provider) {
+    case "openai":
+      return "OpenAI/Codex";
+    case "gemini":
+      return "Gemini";
+    case "anthropic":
+      return "Claude";
+    case "ollama":
+    default:
+      return "Ollama";
+  }
+}

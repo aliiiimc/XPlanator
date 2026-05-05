@@ -6,6 +6,7 @@ import {
   CodeContext,
   ExplanationMode,
   ExtensionConfig,
+  getProviderLabel,
   LastExplanationState,
   ModelProvider,
   ModelSettingsInput,
@@ -527,20 +528,6 @@ function updateStatusBarItem(item: vscode.StatusBarItem): void {
 
 function normalizeLanguage(value: string): UiLanguage {
   return value.toLowerCase().startsWith("en") ? "en" : "fr";
-}
-
-function getProviderLabel(provider: ModelProvider): string {
-  switch (provider) {
-    case "openai":
-      return "OpenAI/Codex";
-    case "gemini":
-      return "Gemini";
-    case "anthropic":
-      return "Claude";
-    case "ollama":
-    default:
-      return "Ollama";
-  }
 }
 
 function hasEndpointChanged(previousValue: string, nextValue: string): boolean {

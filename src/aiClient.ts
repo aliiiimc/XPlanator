@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import {
   ExplainRequest,
   ExtensionConfig,
+  getProviderLabel,
   ModelProvider,
   OllamaGenerateResponse,
   OllamaStatus,
@@ -307,20 +308,6 @@ export class AiClient {
 
 function getSecretKey(provider: ModelProvider): string {
   return `xplanator.${provider}.apiKey`;
-}
-
-function getProviderLabel(provider: ModelProvider): string {
-  switch (provider) {
-    case "openai":
-      return "OpenAI/Codex";
-    case "gemini":
-      return "Gemini";
-    case "anthropic":
-      return "Claude";
-    case "ollama":
-    default:
-      return "Ollama";
-  }
 }
 
 function parseJson<T>(value: string, language: UiLanguage): T {
