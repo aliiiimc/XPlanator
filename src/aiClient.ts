@@ -30,6 +30,7 @@ interface OpenAiResponse {
 
 interface GeminiResponse {
   candidates?: Array<{
+    finishReason?: string;
     content?: {
       parts?: Array<{
         text?: string;
@@ -38,6 +39,19 @@ interface GeminiResponse {
   }>;
   error?: {
     message?: string;
+  };
+}
+
+interface GeminiModelResponse {
+  name?: string;
+  displayName?: string;
+}
+
+interface GeminiGenerationConfig {
+  temperature: number;
+  maxOutputTokens: number;
+  thinkingConfig?: {
+    thinkingBudget: number;
   };
 }
 
@@ -56,6 +70,8 @@ export class AiClient {
 
   async generate(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
     switch (config.provider) {
+      case "lite":
+        throw new Error("Free Lite explanations are generated without AI provider requests.");
       case "openai":
         return this.generateWithOpenAi(config, request, apiKeyOverride);
       case "gemini":
@@ -69,13 +85,24 @@ export class AiClient {
   }
 
   async checkConnection(config: ExtensionConfig, apiKeyOverride?: string): Promise<OllamaStatus> {
+    if (config.provider === "lite") {
+      return {
+        connected: true,
+        models: ["free-lite"]
+      };
+    }
+
     if (config.provider === "ollama") {
       return this.checkOllamaConnection(config);
     }
 
+    if (config.provider === "gemini") {
+      return this.checkGeminiConnection(config, apiKeyOverride);
+    }
+
     await this.generate(config, {
       prompt: "Reply with exactly: ok",
-      maxTokens: 16
+      maxTokens: 128
     }, apiKeyOverride);
 
     return {
@@ -84,8 +111,28 @@ export class AiClient {
     };
   }
 
+  private async checkGeminiConnection(config: ExtensionConfig, apiKeyOverride?: string): Promise<OllamaStatus> {
+    const apiKey = await this.requireApiKey("gemini", config.language, apiKeyOverride);
+    const response = await this.requestJson<GeminiModelResponse>(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}`,
+      config.timeoutSeconds,
+      config.language,
+      {
+        method: "GET",
+        headers: {
+          "x-goog-api-key": apiKey
+        }
+      }
+    );
+
+    return {
+      connected: true,
+      models: [response.displayName, response.name, config.model].filter((model): model is string => Boolean(model))
+    };
+  }
+
   async hasApiKey(provider: ModelProvider): Promise<boolean> {
-    if (provider === "ollama") {
+    if (provider === "lite" || provider === "ollama") {
       return true;
     }
 
@@ -93,7 +140,7 @@ export class AiClient {
   }
 
   async saveApiKey(provider: ModelProvider, apiKey?: string, clearExisting = false): Promise<void> {
-    if (provider === "ollama") {
+    if (provider === "lite" || provider === "ollama") {
       return;
     }
 
@@ -212,9 +259,7 @@ export class AiClient {
               parts: [{ text: request.prompt }]
             }
           ],
-          generationConfig: {
-            maxOutputTokens: request.maxTokens
-          }
+          generationConfig: buildGeminiGenerationConfig(config.model, request.maxTokens)
         })
       }
     );
@@ -223,6 +268,13 @@ export class AiClient {
       .map((part) => part.text)
       .filter((text): text is string => Boolean(text?.trim()))
       .join("\n");
+    const finishReasons = response.candidates
+      ?.map((candidate) => candidate.finishReason)
+      .filter((reason): reason is string => Boolean(reason));
+
+    if (finishReasons?.includes("MAX_TOKENS")) {
+      throw new Error(localizeAiError(config.language, "truncated_response", getProviderLabel("gemini")));
+    }
 
     if (!output?.trim()) {
       throw new Error(localizeAiError(config.language, "empty_response", getProviderLabel("gemini")));
@@ -337,6 +389,22 @@ function getSecretKey(provider: ModelProvider): string {
   return `xplanator.${provider}.apiKey`;
 }
 
+function buildGeminiGenerationConfig(model: string, maxOutputTokens: number): GeminiGenerationConfig {
+  const generationConfig: GeminiGenerationConfig = {
+    temperature: 0.2,
+    maxOutputTokens
+  };
+  const normalizedModel = model.toLowerCase();
+
+  if (normalizedModel.startsWith("gemini-2.5-flash")) {
+    generationConfig.thinkingConfig = {
+      thinkingBudget: 0
+    };
+  }
+
+  return generationConfig;
+}
+
 function parseJson<T>(value: string, language: UiLanguage): T {
   try {
     return JSON.parse(value) as T;
@@ -414,6 +482,7 @@ type AiErrorKey =
   | "invalid_api_key"
   | "http_error"
   | "missing_model"
+  | "truncated_response"
   | "timeout"
   | "provider_unreachable";
 
@@ -430,6 +499,7 @@ function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string)
       invalid_api_key: "La cle API est absente, invalide ou refusee par le fournisseur.",
       http_error: "Le fournisseur IA a renvoye une erreur HTTP {detail}.",
       missing_model: "Le modele configure semble absent ou invalide pour ce fournisseur.",
+      truncated_response: "{detail} a coupe sa reponse avant la fin. Essayez de relancer ou d'utiliser un modele plus fort.",
       timeout: "Le modele met trop de temps a repondre. Essayez un modele plus leger ou augmentez le timeout dans les parametres.",
       provider_unreachable: "Impossible de contacter le fournisseur IA. Verifiez la connexion, l'URL ou la cle API."
     },
@@ -444,6 +514,7 @@ function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string)
       invalid_api_key: "The API key is missing, invalid, or rejected by the provider.",
       http_error: "The AI provider returned HTTP error {detail}.",
       missing_model: "The configured model seems missing or invalid for this provider.",
+      truncated_response: "{detail} stopped before finishing its answer. Try again or use a stronger model.",
       timeout: "The model is taking too long to respond. Try a lighter model or increase the timeout in settings.",
       provider_unreachable: "Unable to reach the AI provider. Check the connection, URL, or API key."
     }

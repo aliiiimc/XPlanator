@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { AiClient } from "./aiClient";
 import { getCodeContext } from "./contextExtractor";
+import { explainWithLite } from "./liteExplainer";
 import { buildPrompt } from "./promptBuilder";
 import {
   CodeContext,
@@ -21,6 +22,9 @@ let lastExplanationState: LastExplanationState | undefined;
 let lastAttemptContext: CodeContext | undefined;
 let lastAttemptMode: ExplanationMode = "quick";
 let latestProviderStatus: ProviderConnectionStatus | undefined;
+
+const quickExplanationMaxTokens = 2048;
+const detailedExplanationMaxTokens = 4096;
 
 export function activate(context: vscode.ExtensionContext): void {
   const aiClient = new AiClient(context.secrets);
@@ -207,6 +211,27 @@ async function explainFromContext(
 ): Promise<void> {
   const config = getConfig();
 
+  if (config.provider === "lite") {
+    const explanation = explainWithLite(codeContext, mode, config.language);
+
+    lastAttemptContext = codeContext;
+    lastAttemptMode = mode;
+    lastExplanationState = {
+      codeContext,
+      explanation,
+      mode
+    };
+
+    panel.showExplanation(
+      {
+        codeContext,
+        explanation
+      },
+      config.language
+    );
+    return;
+  }
+
   if (config.provider !== "ollama" && !(await aiClient.hasApiKey(config.provider))) {
     const message = localize(config.language, "missingProviderKeyDetails", getProviderLabel(config.provider));
     panel.showError(message, config.language, codeContext);
@@ -237,7 +262,7 @@ async function explainFromContext(
       async () =>
         aiClient.generate(config, {
           prompt,
-          maxTokens: mode === "detailed" ? 450 : 250
+          maxTokens: mode === "detailed" ? detailedExplanationMaxTokens : quickExplanationMaxTokens
         })
     );
 
@@ -270,8 +295,12 @@ async function showSettings(panel: ExplanationPanel, aiClient: AiClient): Promis
       model: config.model,
       ollamaUrl: config.ollamaUrl,
       openAiBaseUrl: config.openAiBaseUrl,
+<<<<<<< Updated upstream
       anthropicBaseUrl: config.anthropicBaseUrl,
       hasApiKey: await aiClient.hasApiKey(config.provider),
+=======
+      hasApiKey: config.provider !== "lite" && (await aiClient.hasApiKey(config.provider)),
+>>>>>>> Stashed changes
       apiKey: "",
       clearApiKey: false,
       providerStatus: latestProviderStatus ?? {
@@ -319,6 +348,15 @@ async function checkSettingsConnection(
   const apiKeyOverride = settings?.apiKey?.trim() || undefined;
 
   try {
+    if (previewConfig.provider === "lite") {
+      latestProviderStatus = {
+        kind: "success",
+        message: localize(previewConfig.language, "liteProviderReady")
+      };
+      await showSettingsDraft(panel, aiClient, settings, previewConfig.language);
+      return;
+    }
+
     validateEndpointUrl(previewConfig.language, previewConfig.ollamaUrl, localize(previewConfig.language, "ollamaEndpointLabel"));
     validateEndpointUrl(previewConfig.language, previewConfig.openAiBaseUrl, localize(previewConfig.language, "openAiEndpointLabel"));
     validateEndpointUrl(previewConfig.language, previewConfig.anthropicBaseUrl, localize(previewConfig.language, "anthropicEndpointLabel"));
@@ -364,8 +402,12 @@ async function showSettingsDraft(
       model: previewConfig.model,
       ollamaUrl: previewConfig.ollamaUrl,
       openAiBaseUrl: previewConfig.openAiBaseUrl,
+<<<<<<< Updated upstream
       anthropicBaseUrl: previewConfig.anthropicBaseUrl,
       hasApiKey: await aiClient.hasApiKey(previewConfig.provider),
+=======
+      hasApiKey: previewConfig.provider !== "lite" && (await aiClient.hasApiKey(previewConfig.provider)),
+>>>>>>> Stashed changes
       apiKey: settings?.apiKey ?? "",
       clearApiKey: settings?.clearApiKey ?? false,
       providerStatus: latestProviderStatus ?? {
@@ -380,25 +422,39 @@ async function showSettingsDraft(
 async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: AiClient): Promise<boolean> {
   const config = vscode.workspace.getConfiguration("explainCode");
   const language = getConfig().language;
-  const provider = normalizeProvider(settings?.provider ?? "ollama");
+  const provider = normalizeProvider(settings?.provider ?? "lite");
   const model = normalizeModel(settings?.model, provider);
   const ollamaUrl = settings?.ollamaUrl?.trim() || "http://localhost:11434";
   const openAiBaseUrl = settings?.openAiBaseUrl?.trim() || "https://api.openai.com/v1";
   const anthropicBaseUrl = settings?.anthropicBaseUrl?.trim() || "https://api.anthropic.com/v1";
 
+<<<<<<< Updated upstream
   validateEndpointUrl(language, ollamaUrl, localize(language, "ollamaEndpointLabel"));
   validateEndpointUrl(language, openAiBaseUrl, localize(language, "openAiEndpointLabel"));
   validateEndpointUrl(language, anthropicBaseUrl, localize(language, "anthropicEndpointLabel"));
+=======
+  if (provider !== "lite") {
+    validateEndpointUrl(language, ollamaUrl, localize(language, "ollamaEndpointLabel"));
+    validateEndpointUrl(language, openAiBaseUrl, localize(language, "openAiEndpointLabel"));
+  }
+>>>>>>> Stashed changes
 
   const currentOllamaUrl = config.get<string>("ollamaUrl", "http://localhost:11434");
   const currentOpenAiBaseUrl = config.get<string>("openAiBaseUrl", "https://api.openai.com/v1");
   const currentAnthropicBaseUrl = config.get<string>("anthropicBaseUrl", "https://api.anthropic.com/v1");
   const endpointChanges: string[] = [];
 
-  if (hasEndpointChanged(currentOllamaUrl, ollamaUrl)) {
-    endpointChanges.push(localize(language, "ollamaEndpointLabel"));
+  if (provider !== "lite") {
+    if (hasEndpointChanged(currentOllamaUrl, ollamaUrl)) {
+      endpointChanges.push(localize(language, "ollamaEndpointLabel"));
+    }
+
+    if (hasEndpointChanged(currentOpenAiBaseUrl, openAiBaseUrl)) {
+      endpointChanges.push(localize(language, "openAiEndpointLabel"));
+    }
   }
 
+<<<<<<< Updated upstream
   if (hasEndpointChanged(currentOpenAiBaseUrl, openAiBaseUrl)) {
     endpointChanges.push(localize(language, "openAiEndpointLabel"));
   }
@@ -408,6 +464,9 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
   }
 
   if (endpointChanges.length > 0) {
+=======
+  if (provider !== "lite" && endpointChanges.length > 0) {
+>>>>>>> Stashed changes
     const confirmed = await confirmEndpointSettingsChange(language, endpointChanges);
 
     if (!confirmed) {
@@ -434,7 +493,7 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
 function getConfig(): ExtensionConfig {
   const config = vscode.workspace.getConfiguration("explainCode");
   const language = normalizeLanguage(config.get<string>("language", "fr"));
-  const provider = normalizeProvider(config.get<string>("provider", "ollama"));
+  const provider = normalizeProvider(config.get<string>("provider", "lite"));
 
   return tuneConfigForProvider({
     provider,
@@ -455,17 +514,22 @@ function getConfig(): ExtensionConfig {
 
 function normalizeProvider(value: string): ModelProvider {
   switch (value) {
+    case "lite":
     case "openai":
     case "gemini":
     case "anthropic":
     case "ollama":
       return value;
     default:
-      return "ollama";
+      return "lite";
   }
 }
 
 function normalizeModel(value: string | undefined, provider: ModelProvider): string {
+  if (provider === "lite") {
+    return "free-lite";
+  }
+
   const normalized = value?.trim();
 
   if (normalized) {
@@ -613,7 +677,7 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     openFileForCursorExplain: "Ouvrez un fichier pour expliquer la ligne ou le symbole sous le curseur.",
     nothingToSimplify: "Aucune explication precedente a simplifier.",
     nothingToDetail: "Aucune explication precedente a detailler.",
-    firstRunSetupPrompt: "XPlanator est pret. Verifiez Ollama, le modele et la langue avant votre premiere explication.",
+    firstRunSetupPrompt: "XPlanator est pret. Free Lite fonctionne tout de suite ; ouvrez les parametres pour choisir Ollama ou le cloud si besoin.",
     firstRunOpenSettings: "Ouvrir les parametres",
     firstRunLater: "Plus tard",
     providerConnected: "Le fournisseur IA est connecte.",
@@ -628,6 +692,7 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     providerStatusNotChecked: "Connexion non verifiee.",
     providerStatusConnected: "Connexion reussie.",
     providerStatusConnectedWithModel: "Connexion reussie. Modele detecte : {modelName}.",
+    liteProviderReady: "Free Lite est pret. Aucun modele, aucune cle API et aucune connexion ne sont necessaires.",
     providerStatusFailed: "Echec de la verification de connexion.",
     statusExplainSelection: "Expliquer la selection",
     statusExplainHere: "Expliquer ici",
@@ -652,7 +717,7 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     openFileForCursorExplain: "Open a file to explain the current line or symbol under the cursor.",
     nothingToSimplify: "There is no previous explanation to simplify.",
     nothingToDetail: "There is no previous explanation to expand.",
-    firstRunSetupPrompt: "XPlanator is ready. Check Ollama, the model, and the language before your first explanation.",
+    firstRunSetupPrompt: "XPlanator is ready. Free Lite works immediately; open settings to choose Ollama or cloud if needed.",
     firstRunOpenSettings: "Open settings",
     firstRunLater: "Later",
     providerConnected: "The AI provider is connected.",
@@ -667,6 +732,7 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     providerStatusNotChecked: "Connection not checked yet.",
     providerStatusConnected: "Connection successful.",
     providerStatusConnectedWithModel: "Connection successful. Detected model: {modelName}.",
+    liteProviderReady: "Free Lite is ready. No model, API key, or connection is needed.",
     providerStatusFailed: "Connection check failed.",
     statusExplainSelection: "Explain selection",
     statusExplainHere: "Explain here",

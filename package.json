@@ -1,7 +1,7 @@
 {
   "name": "xplanator",
   "displayName": "XPlanator",
-  "description": "Understand selected code in VS Code with local-first explanations and optional BYOK cloud models.",
+  "description": "Understand selected code in VS Code with instant Free Lite explanations, local Ollama, or optional BYOK cloud models.",
   "version": "0.0.1",
   "publisher": "local",
   "license": "MIT",
@@ -96,13 +96,14 @@
         "explainCode.provider": {
           "type": "string",
           "enum": [
+            "lite",
             "ollama",
             "openai",
             "gemini",
             "anthropic"
           ],
-          "default": "ollama",
-          "description": "AI provider used by XPlanator. Ollama stays local; cloud providers require an API key."
+          "default": "lite",
+          "description": "Explanation provider used by XPlanator. Free Lite needs no model or API key; Ollama stays local; cloud providers require an API key."
         },
         "explainCode.openAiBaseUrl": {
           "type": "string",
@@ -117,7 +118,7 @@
         "explainCode.model": {
           "type": "string",
           "default": "qwen2.5-coder",
-          "description": "Model used to explain code. Examples: qwen2.5-coder, gpt-5, gemini-2.5-flash, claude-sonnet-4-5."
+          "description": "Model used to explain code when using AI providers. Free Lite ignores this. Examples: qwen2.5-coder, gpt-5, gemini-2.5-flash, claude-sonnet-4-5."
         },
         "explainCode.maxSurroundingLines": {
           "type": "number",

@@ -589,6 +589,7 @@ export class ExplanationPanel {
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const defaultModels = {
+        lite: "free-lite",
         ollama: "qwen2.5-coder",
         openai: "gpt-5",
         gemini: "gemini-2.5-flash",
@@ -625,11 +626,39 @@ export class ExplanationPanel {
       }
       const provider = document.querySelector("#provider");
       const model = document.querySelector("#model");
+      const apiKey = document.querySelector("#apiKey");
+      const clearApiKey = document.querySelector("#clearApiKey");
+      let previousProvider = provider?.value;
+      const refreshProviderFields = () => {
+        const isLite = provider?.value === "lite";
+        const needsApiKey = provider?.value !== "lite" && provider?.value !== "ollama";
+        if (model) {
+          model.disabled = isLite;
+          if (isLite) {
+            model.value = defaultModels.lite;
+          }
+        }
+        if (apiKey) {
+          apiKey.disabled = !needsApiKey;
+          if (!needsApiKey) {
+            apiKey.value = "";
+          }
+        }
+        if (clearApiKey) {
+          clearApiKey.disabled = !needsApiKey;
+          if (!needsApiKey) {
+            clearApiKey.checked = false;
+          }
+        }
+      };
       provider?.addEventListener("change", () => {
-        if (model && !model.value.trim()) {
+        if (model && (!model.value.trim() || previousProvider === "lite")) {
           model.value = defaultModels[provider.value] || "";
         }
+        previousProvider = provider.value;
+        refreshProviderFields();
       });
+      refreshProviderFields();
     </script>
   </body>
 </html>`;
@@ -637,7 +666,9 @@ export class ExplanationPanel {
 }
 
 function renderSettingsView(settings: SettingsViewModel, text: Record<string, string>): string {
-  const keyStatus = settings.provider === "ollama" ? text.apiKeyNotNeeded : settings.hasApiKey ? text.apiKeyStored : text.apiKeyMissing;
+  const isLite = settings.provider === "lite";
+  const requiresApiKey = settings.provider !== "lite" && settings.provider !== "ollama";
+  const keyStatus = !requiresApiKey ? text.apiKeyNotNeeded : settings.hasApiKey ? text.apiKeyStored : text.apiKeyMissing;
   const statusClass =
     settings.providerStatus.kind === "success"
       ? "statusSuccess"
@@ -650,6 +681,7 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       <div class="field">
         <label for="provider">${escapeHtml(text.provider)}</label>
         <select id="provider">
+          ${renderProviderOption("lite", "Free Lite (no AI)", settings.provider)}
           ${renderProviderOption("ollama", "Ollama local", settings.provider)}
           ${renderProviderOption("openai", "OpenAI / Codex", settings.provider)}
           ${renderProviderOption("gemini", "Gemini", settings.provider)}
@@ -658,7 +690,7 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       </div>
       <div class="field">
         <label for="model">${escapeHtml(text.model)}</label>
-        <input id="model" value="${escapeHtml(settings.model)}" placeholder="qwen2.5-coder" />
+        <input id="model" value="${escapeHtml(settings.model)}" placeholder="qwen2.5-coder" ${isLite ? "disabled" : ""} />
       </div>
       <div class="field fieldWide">
         <label for="ollamaUrl">${escapeHtml(text.ollamaUrl)}</label>
@@ -674,11 +706,11 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       </div>
       <div class="field fieldWide">
         <label for="apiKey">${escapeHtml(text.apiKey)} - ${escapeHtml(keyStatus)}</label>
-        <input id="apiKey" type="password" value="${escapeHtml(settings.hasApiKey && !settings.apiKey ? "••••••••" : (settings.apiKey ?? ""))}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" data-key-saved="${settings.hasApiKey ? "true" : "false"}" />
+        <input id="apiKey" type="password" value="${escapeHtml(requiresApiKey && settings.hasApiKey && !settings.apiKey ? "••••••••" : (settings.apiKey ?? ""))}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" data-key-saved="${requiresApiKey && settings.hasApiKey ? "true" : "false"}" ${requiresApiKey ? "" : "disabled"} />
       </div>
       <div class="field fieldWide">
         <label>
-          <input id="clearApiKey" type="checkbox" ${settings.clearApiKey ? "checked" : ""} />
+          <input id="clearApiKey" type="checkbox" ${settings.clearApiKey ? "checked" : ""} ${requiresApiKey ? "" : "disabled"} />
           ${escapeHtml(text.clearApiKey)}
         </label>
       </div>
@@ -786,7 +818,59 @@ function renderRichText(value: string): string {
     .join("");
 }
 
+function getFrenchUiText(): Record<string, string> {
+  return {
+    appName: "XPlanator",
+    ready: "Pret",
+    analyzing: "Analyse en cours",
+    error: "Erreur",
+    emptySummary: "Selectionne du code ou pose ton curseur sur une ligne pour obtenir une explication immediate.",
+    emptyDetails:
+      "Tu peux lancer l'explication depuis le clic droit, la palette de commandes, ou le bouton dans la barre de statut. Free Lite fonctionne tout de suite sans envoyer le code nulle part ; Ollama et le cloud restent optionnels.",
+    emptyTakeaway: "Le but est simple : comprendre un bout de code sans casser ton flux de lecture.",
+    loadingSummary: "Je lis le code selectionne.",
+    loadingTakeaway: "Garde le contexte ouvert, la reponse arrive ici.",
+    errorSummary: "Je n'ai pas pu generer l'explication.",
+    errorTakeaway: "Tu peux reessayer, utiliser Free Lite, ou verifier la connexion du fournisseur configure.",
+    moreSimple: "Plus simple",
+    moreDetailed: "Plus detaille",
+    retry: "Reessayer",
+    settings: "Parametres",
+    settingsButton: "Parametres",
+    generalIdea: "Idee generale",
+    details: "Details",
+    takeaway: "A retenir",
+    hint: "Astuce : selectionne juste la partie qui te bloque pour obtenir une explication plus nette.",
+    provider: "Fournisseur",
+    model: "Modele",
+    ollamaUrl: "URL Ollama",
+    openAiBaseUrl: "URL de base compatible OpenAI",
+    apiKey: "Cle API",
+    apiKeyPlaceholder: "Laisse vide pour garder la cle enregistree",
+    apiKeyNotNeeded: "inutile avec Free Lite ou Ollama",
+    apiKeyStored: "cle deja enregistree",
+    apiKeyMissing: "aucune cle enregistree",
+    clearApiKey: "Supprimer la cle API enregistree pour ce fournisseur",
+    connectionStatus: "Etat de la connexion",
+    checkConnection: "Verifier la connexion",
+    cloudPrivacyNote:
+      "Free Lite n'envoie le code nulle part. Ollama garde les requetes en local. Les fournisseurs cloud recoivent le code que tu demandes a XPlanator d'expliquer.",
+    apiKeySecurityNote:
+      "Les cles API ne sont jamais reaffichees apres l'enregistrement et sont stockees avec le SecretStorage de VS Code.",
+    saveSettings: "Enregistrer",
+    cancelSettings: "Annuler",
+    noDistinctSummary: "Le modele n'a pas fourni de resume distinct.",
+    defaultTakeaway: "L'idee principale est deja dans les details ci-dessus.",
+    explanationAvailableBelow: "Explication disponible ci-dessous.",
+    reviewTakeaway: "Relis surtout le bloc cible et les details pour confirmer ton intuition."
+  };
+}
+
 function getUiText(language: UiLanguage): Record<string, string> {
+  if (language === "fr") {
+    return getFrenchUiText();
+  }
+
   if (language === "en") {
     return {
       appName: "XPlanator",
@@ -795,12 +879,12 @@ function getUiText(language: UiLanguage): Record<string, string> {
       error: "Error",
       emptySummary: "Select code or place your cursor on a line to get an immediate explanation.",
       emptyDetails:
-        "You can launch an explanation from the context menu, the command palette, or the status bar button. The extension stays local and sends code only to Ollama on your machine.",
+        "You can launch an explanation from the context menu, the command palette, or the status bar button. Free Lite works instantly without sending code anywhere; Ollama and cloud providers are optional upgrades.",
       emptyTakeaway: "The goal is simple: understand a piece of code without breaking your reading flow.",
       loadingSummary: "Reading the selected code.",
       loadingTakeaway: "Keep the file context open. The answer will appear here.",
       errorSummary: "I could not generate the explanation.",
-      errorTakeaway: "You can retry or check the Ollama connection.",
+      errorTakeaway: "You can retry, use Free Lite, or check the configured provider connection.",
       moreSimple: "Simpler",
       moreDetailed: "More detail",
       retry: "Retry",
@@ -817,13 +901,13 @@ function getUiText(language: UiLanguage): Record<string, string> {
       anthropicBaseUrl: "Anthropic-compatible base URL",
       apiKey: "API key",
       apiKeyPlaceholder: "Leave empty to keep the saved key",
-      apiKeyNotNeeded: "not needed for Ollama",
+      apiKeyNotNeeded: "not needed for Free Lite or Ollama",
       apiKeyStored: "key already saved",
       apiKeyMissing: "no key saved",
       clearApiKey: "Delete the saved API key for this provider",
       connectionStatus: "Connection status",
       checkConnection: "Check connection",
-      cloudPrivacyNote: "Cloud providers receive the code you ask XPlanator to explain. Use Ollama if you want everything to stay local.",
+      cloudPrivacyNote: "Free Lite sends code nowhere. Ollama keeps requests local. Cloud providers receive the code you ask XPlanator to explain.",
       apiKeySecurityNote: "API keys are never displayed again after saving and are stored with VS Code SecretStorage.",
       saveSettings: "Save",
       cancelSettings: "Cancel",
@@ -834,6 +918,7 @@ function getUiText(language: UiLanguage): Record<string, string> {
     };
   }
 
+<<<<<<< Updated upstream
   return {
     appName: "XPlanator",
     ready: "Prêt",
@@ -879,4 +964,7 @@ function getUiText(language: UiLanguage): Record<string, string> {
     explanationAvailableBelow: "Explication disponible ci-dessous.",
     reviewTakeaway: "Relis surtout le bloc cible et les détails pour confirmer ton intuition."
   };
+=======
+  return getFrenchUiText();
+>>>>>>> Stashed changes
 }
