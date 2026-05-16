@@ -270,6 +270,7 @@ async function showSettings(panel: ExplanationPanel, aiClient: AiClient): Promis
       model: config.model,
       ollamaUrl: config.ollamaUrl,
       openAiBaseUrl: config.openAiBaseUrl,
+      anthropicBaseUrl: config.anthropicBaseUrl,
       hasApiKey: await aiClient.hasApiKey(config.provider),
       apiKey: "",
       clearApiKey: false,
@@ -320,6 +321,7 @@ async function checkSettingsConnection(
   try {
     validateEndpointUrl(previewConfig.language, previewConfig.ollamaUrl, localize(previewConfig.language, "ollamaEndpointLabel"));
     validateEndpointUrl(previewConfig.language, previewConfig.openAiBaseUrl, localize(previewConfig.language, "openAiEndpointLabel"));
+    validateEndpointUrl(previewConfig.language, previewConfig.anthropicBaseUrl, localize(previewConfig.language, "anthropicEndpointLabel"));
 
     if (previewConfig.provider !== "ollama" && !apiKeyOverride && !(await aiClient.hasApiKey(previewConfig.provider))) {
       latestProviderStatus = {
@@ -362,6 +364,7 @@ async function showSettingsDraft(
       model: previewConfig.model,
       ollamaUrl: previewConfig.ollamaUrl,
       openAiBaseUrl: previewConfig.openAiBaseUrl,
+      anthropicBaseUrl: previewConfig.anthropicBaseUrl,
       hasApiKey: await aiClient.hasApiKey(previewConfig.provider),
       apiKey: settings?.apiKey ?? "",
       clearApiKey: settings?.clearApiKey ?? false,
@@ -381,12 +384,15 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
   const model = normalizeModel(settings?.model, provider);
   const ollamaUrl = settings?.ollamaUrl?.trim() || "http://localhost:11434";
   const openAiBaseUrl = settings?.openAiBaseUrl?.trim() || "https://api.openai.com/v1";
+  const anthropicBaseUrl = settings?.anthropicBaseUrl?.trim() || "https://api.anthropic.com/v1";
 
   validateEndpointUrl(language, ollamaUrl, localize(language, "ollamaEndpointLabel"));
   validateEndpointUrl(language, openAiBaseUrl, localize(language, "openAiEndpointLabel"));
+  validateEndpointUrl(language, anthropicBaseUrl, localize(language, "anthropicEndpointLabel"));
 
   const currentOllamaUrl = config.get<string>("ollamaUrl", "http://localhost:11434");
   const currentOpenAiBaseUrl = config.get<string>("openAiBaseUrl", "https://api.openai.com/v1");
+  const currentAnthropicBaseUrl = config.get<string>("anthropicBaseUrl", "https://api.anthropic.com/v1");
   const endpointChanges: string[] = [];
 
   if (hasEndpointChanged(currentOllamaUrl, ollamaUrl)) {
@@ -395,6 +401,10 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
 
   if (hasEndpointChanged(currentOpenAiBaseUrl, openAiBaseUrl)) {
     endpointChanges.push(localize(language, "openAiEndpointLabel"));
+  }
+
+  if (hasEndpointChanged(currentAnthropicBaseUrl, anthropicBaseUrl)) {
+    endpointChanges.push(localize(language, "anthropicEndpointLabel"));
   }
 
   if (endpointChanges.length > 0) {
@@ -410,6 +420,7 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
   await config.update("model", model, vscode.ConfigurationTarget.Global);
   await config.update("ollamaUrl", ollamaUrl, vscode.ConfigurationTarget.Global);
   await config.update("openAiBaseUrl", openAiBaseUrl, vscode.ConfigurationTarget.Global);
+  await config.update("anthropicBaseUrl", anthropicBaseUrl, vscode.ConfigurationTarget.Global);
   await aiClient.saveApiKey(provider, settings?.apiKey, settings?.clearApiKey);
   latestProviderStatus = {
     kind: "idle",
@@ -429,6 +440,7 @@ function getConfig(): ExtensionConfig {
     provider,
     ollamaUrl: config.get<string>("ollamaUrl", "http://localhost:11434"),
     openAiBaseUrl: config.get<string>("openAiBaseUrl", "https://api.openai.com/v1"),
+    anthropicBaseUrl: config.get<string>("anthropicBaseUrl", "https://api.anthropic.com/v1"),
     model: normalizeModel(config.get<string>("model", ""), provider),
     maxSurroundingLines: config.get<number>("maxSurroundingLines", 20),
     responseStyle: config.get<ExtensionConfig["responseStyle"]>("responseStyle", "beginner"),
@@ -482,7 +494,8 @@ function buildConfigFromSettings(settings: ModelSettingsInput | undefined): Exte
     provider,
     model: normalizeModel(settings?.model, provider),
     ollamaUrl: settings?.ollamaUrl?.trim() || config.ollamaUrl,
-    openAiBaseUrl: settings?.openAiBaseUrl?.trim() || config.openAiBaseUrl
+    openAiBaseUrl: settings?.openAiBaseUrl?.trim() || config.openAiBaseUrl,
+    anthropicBaseUrl: settings?.anthropicBaseUrl?.trim() || config.anthropicBaseUrl
   };
 }
 
@@ -622,6 +635,7 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     statusTooltipCursor: "XPlanator : expliquer la ligne ou le symbole sous le curseur",
     ollamaEndpointLabel: "URL Ollama",
     openAiEndpointLabel: "URL OpenAI",
+    anthropicEndpointLabel: "URL Anthropic",
     endpointInvalidUrl: "{modelName} est invalide. Entrez une URL complete (http://... ou https://...).",
     endpointInvalidProtocol: "{modelName} doit utiliser http:// ou https://.",
     endpointHttpsRequired: "{modelName} doit utiliser HTTPS pour les hotes non locaux.",
@@ -660,6 +674,7 @@ function localize(language: UiLanguage, key: string, modelName?: string): string
     statusTooltipCursor: "XPlanator: explain the current line or symbol under the cursor",
     ollamaEndpointLabel: "Ollama URL",
     openAiEndpointLabel: "OpenAI URL",
+    anthropicEndpointLabel: "Anthropic URL",
     endpointInvalidUrl: "{modelName} is invalid. Enter a full URL (http://... or https://...).",
     endpointInvalidProtocol: "{modelName} must use http:// or https://.",
     endpointHttpsRequired: "{modelName} must use HTTPS for non-local hosts.",

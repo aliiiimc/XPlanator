@@ -164,7 +164,7 @@ export class AiClient {
   private async generateWithOpenAi(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
     const apiKey = await this.requireApiKey("openai", config.language, apiKeyOverride);
     const response = await this.requestJson<OpenAiResponse>(
-      `${config.openAiBaseUrl.replace(/\/$/, "")}/responses`,
+      buildVersionedProviderUrl(config.openAiBaseUrl, "responses", config.language),
       config.timeoutSeconds,
       config.language,
       {
@@ -233,23 +233,28 @@ export class AiClient {
 
   private async generateWithAnthropic(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
     const apiKey = await this.requireApiKey("anthropic", config.language, apiKeyOverride);
-    const response = await this.requestJson<AnthropicResponse>("https://api.anthropic.com/v1/messages", config.timeoutSeconds, config.language, {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: config.model,
-        max_tokens: request.maxTokens,
-        messages: [
-          {
-            role: "user",
-            content: request.prompt
-          }
-        ]
-      })
-    });
+    const response = await this.requestJson<AnthropicResponse>(
+      buildVersionedProviderUrl(config.anthropicBaseUrl, "messages", config.language),
+      config.timeoutSeconds,
+      config.language,
+      {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: config.model,
+          max_tokens: request.maxTokens,
+          messages: [
+            {
+              role: "user",
+              content: request.prompt
+            }
+          ]
+        })
+      }
+    );
     const output = response.content
       ?.map((content) => content.text)
       .filter((text): text is string => Boolean(text?.trim()))
@@ -304,6 +309,28 @@ export class AiClient {
       clearTimeout(timeoutHandle);
     }
   }
+}
+
+function buildVersionedProviderUrl(baseUrl: string, route: string, language: UiLanguage): string {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(baseUrl.trim());
+  } catch {
+    throw new Error(localizeAiError(language, "invalid_endpoint_url"));
+  }
+
+  const basePath = parsed.pathname.replace(/\/+$/, "");
+  const normalizedRoute = route.replace(/^\/+/, "");
+  const routeSuffix = `/${normalizedRoute}`;
+
+  if (basePath.endsWith(routeSuffix)) {
+    return parsed.toString();
+  }
+
+  const normalizedBasePath = basePath && basePath !== "/" ? basePath : "/v1";
+  parsed.pathname = `${normalizedBasePath}/${normalizedRoute}`.replace(/\/{2,}/g, "/");
+  return parsed.toString();
 }
 
 function getSecretKey(provider: ModelProvider): string {

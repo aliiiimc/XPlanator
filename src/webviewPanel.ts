@@ -602,6 +602,7 @@ export class ExplanationPanel {
           model: document.querySelector("#model")?.value,
           ollamaUrl: document.querySelector("#ollamaUrl")?.value,
           openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
+          anthropicBaseUrl: document.querySelector("#anthropicBaseUrl")?.value,
           apiKey: isPlaceholder ? "" : (apiKeyInput?.value ?? ""),
           clearApiKey: document.querySelector("#clearApiKey")?.checked
         };
@@ -666,6 +667,10 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       <div class="field fieldWide">
         <label for="openAiBaseUrl">${escapeHtml(text.openAiBaseUrl)}</label>
         <input id="openAiBaseUrl" value="${escapeHtml(settings.openAiBaseUrl)}" placeholder="https://api.openai.com/v1" />
+      </div>
+      <div class="field fieldWide">
+        <label for="anthropicBaseUrl">${escapeHtml(text.anthropicBaseUrl)}</label>
+        <input id="anthropicBaseUrl" value="${escapeHtml(settings.anthropicBaseUrl)}" placeholder="https://api.anthropic.com/v1" />
       </div>
       <div class="field fieldWide">
         <label for="apiKey">${escapeHtml(text.apiKey)} - ${escapeHtml(keyStatus)}</label>
@@ -809,6 +814,7 @@ function getUiText(language: UiLanguage): Record<string, string> {
       model: "Model",
       ollamaUrl: "Ollama URL",
       openAiBaseUrl: "OpenAI-compatible base URL",
+      anthropicBaseUrl: "Anthropic-compatible base URL",
       apiKey: "API key",
       apiKeyPlaceholder: "Leave empty to keep the saved key",
       apiKeyNotNeeded: "not needed for Ollama",
@@ -854,6 +860,7 @@ function getUiText(language: UiLanguage): Record<string, string> {
     model: "Modèle",
     ollamaUrl: "URL Ollama",
     openAiBaseUrl: "URL de base compatible OpenAI",
+    anthropicBaseUrl: "URL de base compatible Anthropic",
     apiKey: "Clé API",
     apiKeyPlaceholder: "Laisse vide pour garder la clé enregistrée",
     apiKeyNotNeeded: "inutile avec Ollama",

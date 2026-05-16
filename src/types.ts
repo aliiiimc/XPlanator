@@ -10,6 +10,7 @@ export interface ExtensionConfig {
   provider: ModelProvider;
   ollamaUrl: string;
   openAiBaseUrl: string;
+  anthropicBaseUrl: string;
   model: string;
   maxSurroundingLines: number;
   responseStyle: ResponseStyle;
@@ -26,6 +27,7 @@ export interface ModelSettingsInput {
   model: string;
   ollamaUrl: string;
   openAiBaseUrl: string;
+  anthropicBaseUrl: string;
   apiKey?: string;
   clearApiKey?: boolean;
 }

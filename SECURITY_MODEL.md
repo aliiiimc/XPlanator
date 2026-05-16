@@ -47,7 +47,7 @@ When `gemini` is selected, the selected code and context are sent to the Gemini 
 
 ### Claude
 
-When `anthropic` is selected, the selected code and context are sent to the Anthropic Messages API.
+When `anthropic` is selected, the selected code and context are sent to the configured Anthropic-compatible Messages API base URL.
 
 ## What XPlanator Does Not Do
 

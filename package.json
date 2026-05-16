@@ -109,6 +109,11 @@
           "default": "https://api.openai.com/v1",
           "description": "Base URL for OpenAI or OpenAI-compatible APIs."
         },
+        "explainCode.anthropicBaseUrl": {
+          "type": "string",
+          "default": "https://api.anthropic.com/v1",
+          "description": "Base URL for Anthropic or Anthropic-compatible Messages APIs."
+        },
         "explainCode.model": {
           "type": "string",
           "default": "qwen2.5-coder",

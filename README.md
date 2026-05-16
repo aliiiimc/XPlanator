@@ -131,6 +131,7 @@ ollama pull qwen2.5-coder
 - `explainCode.provider`: `ollama`, `openai`, `gemini`, or `anthropic`
 - `explainCode.ollamaUrl`: local Ollama URL, default `http://localhost:11434`
 - `explainCode.openAiBaseUrl`: OpenAI-compatible base URL, default `https://api.openai.com/v1`
+- `explainCode.anthropicBaseUrl`: Anthropic-compatible Messages API base URL, default `https://api.anthropic.com/v1`
 - `explainCode.model`: model name
 - `explainCode.responseStyle`: `simple`, `technical`, or `beginner`
 - `explainCode.language`: `fr` or `en`
