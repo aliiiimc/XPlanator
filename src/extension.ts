@@ -5,6 +5,7 @@ import { buildPrompt } from "./promptBuilder";
 import {
   CodeContext,
   ExplanationMode,
+  ExplanationSection,
   ExtensionConfig,
   getProviderLabel,
   LastExplanationState,
@@ -85,12 +86,13 @@ export function activate(context: vscode.ExtensionContext): void {
             codeContext: lastExplanationState.codeContext,
             explanation: lastExplanationState.explanation
           },
-          getConfig().language
+          getConfig().language,
+          getConfig().explanationSections
         );
         return;
       }
 
-      panel.showEmptyState(getConfig().language);
+      panel.showEmptyState(getConfig().language, getConfig().explanationSections);
       return;
     }
 
@@ -113,6 +115,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     statusBarItem,
+    vscode.commands.registerCommand("explainCode.openPanel", async () => {
+      panel.showEmptyState(getConfig().language, getConfig().explanationSections);
+    }),
+
     vscode.commands.registerCommand("explainCode.explainSelection", async () => {
       const editor = vscode.window.activeTextEditor;
 
@@ -212,7 +218,7 @@ async function explainFromContext(
 
   if (config.provider !== "ollama" && !(await aiClient.hasApiKey(config.provider))) {
     const message = localize(config.language, "missingProviderKeyDetails", getProviderLabel(config.provider));
-    panel.showError(message, config.language, codeContext);
+    panel.showError(message, config.language, codeContext, config.explanationSections);
     vscode.window.showErrorMessage(message);
     return;
   }
@@ -221,14 +227,15 @@ async function explainFromContext(
     {
       context: codeContext,
       responseLanguage: config.language,
-      responseStyle: config.responseStyle
+      responseStyle: config.responseStyle,
+      explanationSections: config.explanationSections
     },
     mode
   );
 
   lastAttemptContext = codeContext;
   lastAttemptMode = mode;
-  panel.showLoading(localize(config.language, "loadingWithProvider"), config.language);
+  panel.showLoading(localize(config.language, "loadingWithProvider"), config.language, config.explanationSections);
 
   try {
     const explanation = await vscode.window.withProgress(
@@ -255,11 +262,12 @@ async function explainFromContext(
         codeContext,
         explanation
       },
-      config.language
+      config.language,
+      config.explanationSections
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : localize(config.language, "unknownError");
-    panel.showError(message, config.language, codeContext);
+    panel.showError(message, config.language, codeContext, config.explanationSections);
     vscode.window.showErrorMessage(message);
   }
 }
@@ -274,6 +282,7 @@ async function showSettings(panel: ExplanationPanel, aiClient: AiClient): Promis
       ollamaUrl: config.ollamaUrl,
       openAiBaseUrl: config.openAiBaseUrl,
       anthropicBaseUrl: config.anthropicBaseUrl,
+      explanationSections: config.explanationSections,
       hasApiKey: await aiClient.hasApiKey(config.provider),
       apiKey: "",
       clearApiKey: false,
@@ -368,6 +377,7 @@ async function showSettingsDraft(
       ollamaUrl: previewConfig.ollamaUrl,
       openAiBaseUrl: previewConfig.openAiBaseUrl,
       anthropicBaseUrl: previewConfig.anthropicBaseUrl,
+      explanationSections: previewConfig.explanationSections,
       hasApiKey: await aiClient.hasApiKey(previewConfig.provider),
       apiKey: settings?.apiKey ?? "",
       clearApiKey: settings?.clearApiKey ?? false,
@@ -388,6 +398,7 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
   const ollamaUrl = settings?.ollamaUrl?.trim() || "http://localhost:11434";
   const openAiBaseUrl = settings?.openAiBaseUrl?.trim() || "https://api.openai.com/v1";
   const anthropicBaseUrl = settings?.anthropicBaseUrl?.trim() || "https://api.anthropic.com/v1";
+  const explanationSections = normalizeExplanationSections(settings?.explanationSections);
 
   validateEndpointUrl(language, ollamaUrl, localize(language, "ollamaEndpointLabel"));
   validateEndpointUrl(language, openAiBaseUrl, localize(language, "openAiEndpointLabel"));
@@ -424,6 +435,7 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
   await config.update("ollamaUrl", ollamaUrl, vscode.ConfigurationTarget.Global);
   await config.update("openAiBaseUrl", openAiBaseUrl, vscode.ConfigurationTarget.Global);
   await config.update("anthropicBaseUrl", anthropicBaseUrl, vscode.ConfigurationTarget.Global);
+  await config.update("explanationSections", explanationSections, vscode.ConfigurationTarget.Global);
   await aiClient.saveApiKey(provider, settings?.apiKey, settings?.clearApiKey);
   latestProviderStatus = {
     kind: "idle",
@@ -452,7 +464,8 @@ function getConfig(): ExtensionConfig {
     includeRelatedContext: config.get<boolean>("includeRelatedContext", false),
     maxRelatedSnippets: config.get<number>("maxRelatedSnippets", 0),
     maxRelatedLinesPerSnippet: config.get<number>("maxRelatedLinesPerSnippet", 28),
-    maxContextCharacters: config.get<number>("maxContextCharacters", 8000)
+    maxContextCharacters: config.get<number>("maxContextCharacters", 8000),
+    explanationSections: normalizeExplanationSections(config.get<string[]>("explanationSections", ["summary", "details", "takeaway"]))
   });
 }
 
@@ -528,8 +541,15 @@ function buildConfigFromSettings(settings: ModelSettingsInput | undefined): Exte
     model: normalizeModel(settings?.model, provider),
     ollamaUrl: settings?.ollamaUrl?.trim() || config.ollamaUrl,
     openAiBaseUrl: settings?.openAiBaseUrl?.trim() || config.openAiBaseUrl,
-    anthropicBaseUrl: settings?.anthropicBaseUrl?.trim() || config.anthropicBaseUrl
+    anthropicBaseUrl: settings?.anthropicBaseUrl?.trim() || config.anthropicBaseUrl,
+    explanationSections: normalizeExplanationSections(settings?.explanationSections ?? config.explanationSections)
   };
+}
+
+function normalizeExplanationSections(values: readonly string[] | undefined): ExplanationSection[] {
+  const allowed: ExplanationSection[] = ["summary", "details", "takeaway"];
+  const selected = allowed.filter((section) => values?.includes(section));
+  return selected.length ? selected : ["summary"];
 }
 
 function tuneConfigForProvider(config: ExtensionConfig): ExtensionConfig {

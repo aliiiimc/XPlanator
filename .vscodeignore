@@ -3,9 +3,12 @@
 .github/**
 .vscode/**
 .vscode-test/**
+.commandcode/**
 node_modules/**
 src/**
-*.map
+**/*.map
+out/**/*.test.js
+out/ollamaClient.js
 *.log
 .env
 .env.*

@@ -29,7 +29,7 @@ Use the official VS Code extension packaging tool:
 npx @vscode/vsce package
 ```
 
-Before publishing, replace the placeholder `publisher` field in `package.json` with the real Marketplace publisher id.
+Before publishing, verify that `publisher` in `package.json` matches the Marketplace publisher account you will use.
 
 ## Open VSX
 

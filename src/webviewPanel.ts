@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ExplanationSections, parseExplanation, stripHighlightMarkers } from "./explanationParser";
-import { CodeContext, ModelSettingsInput, ProviderConnectionStatus, UiLanguage } from "./types";
+import { CodeContext, ExplanationSection, ModelSettingsInput, ProviderConnectionStatus, UiLanguage } from "./types";
 
 type SectionKey = "summary" | "details" | "takeaway";
 type PanelAction =
@@ -28,6 +28,8 @@ interface SettingsViewModel extends ModelSettingsInput {
   providerStatus: ProviderConnectionStatus;
 }
 
+const allExplanationSections: ExplanationSection[] = ["summary", "details", "takeaway"];
+
 export class ExplanationPanel {
   private panel: vscode.WebviewPanel | undefined;
   private latestState: PanelState | undefined;
@@ -38,7 +40,7 @@ export class ExplanationPanel {
     private readonly onAction: (message: PanelMessage) => void
   ) {}
 
-  showEmptyState(language: UiLanguage): void {
+  showEmptyState(language: UiLanguage, explanationSections: ExplanationSection[] = allExplanationSections): void {
     const panel = this.ensurePanel();
     const text = getUiText(language);
     const sections: ExplanationSections = {
@@ -55,11 +57,13 @@ export class ExplanationPanel {
       metadata: [],
       sections,
       isError: false,
-      loading: false
+      loading: false,
+      explanationSections
     });
+    this.revealPanel(panel);
   }
 
-  showLoading(message: string, language: UiLanguage): void {
+  showLoading(message: string, language: UiLanguage, explanationSections: ExplanationSection[]): void {
     const panel = this.ensurePanel();
     const text = getUiText(language);
     const sections: ExplanationSections = {
@@ -76,12 +80,13 @@ export class ExplanationPanel {
       metadata: [],
       sections,
       isError: false,
-      loading: true
+      loading: true,
+      explanationSections
     });
-    panel.reveal(vscode.ViewColumn.Beside, true);
+    this.revealPanel(panel);
   }
 
-  showExplanation(state: PanelState, language: UiLanguage): void {
+  showExplanation(state: PanelState, language: UiLanguage, explanationSections: ExplanationSection[]): void {
     this.latestState = state;
     const panel = this.ensurePanel();
     const text = getUiText(language);
@@ -95,12 +100,18 @@ export class ExplanationPanel {
       metadata: buildMetadata(state.codeContext, language),
       sections,
       isError: false,
-      loading: false
+      loading: false,
+      explanationSections
     });
-    panel.reveal(vscode.ViewColumn.Beside, true);
+    this.revealPanel(panel);
   }
 
-  showError(message: string, language: UiLanguage, codeContext?: CodeContext): void {
+  showError(
+    message: string,
+    language: UiLanguage,
+    codeContext?: CodeContext,
+    explanationSections: ExplanationSection[] = allExplanationSections
+  ): void {
     const panel = this.ensurePanel();
     const text = getUiText(language);
     const sections: ExplanationSections = {
@@ -117,9 +128,10 @@ export class ExplanationPanel {
       metadata: codeContext ? buildMetadata(codeContext, language) : [],
       sections,
       isError: true,
-      loading: false
+      loading: false,
+      explanationSections
     });
-    panel.reveal(vscode.ViewColumn.Beside, true);
+    this.revealPanel(panel);
   }
 
   showSettings(settings: SettingsViewModel, language: UiLanguage): void {
@@ -139,9 +151,10 @@ export class ExplanationPanel {
       },
       isError: false,
       loading: false,
-      settings
+      settings,
+      explanationSections: settings.explanationSections ?? allExplanationSections
     });
-    panel.reveal(vscode.ViewColumn.Beside, true);
+    this.revealPanel(panel);
   }
 
   getLatestExplanationText(): string | undefined {
@@ -184,6 +197,14 @@ export class ExplanationPanel {
     return this.panel;
   }
 
+  private revealPanel(panel: vscode.WebviewPanel): void {
+    if (panel.visible) {
+      return;
+    }
+
+    panel.reveal(panel.viewColumn ?? vscode.ViewColumn.Beside, true);
+  }
+
   private renderHtml(input: {
     language: UiLanguage;
     title: string;
@@ -192,6 +213,7 @@ export class ExplanationPanel {
     sections: ExplanationSections;
     isError: boolean;
     loading: boolean;
+    explanationSections?: ExplanationSection[];
     settings?: SettingsViewModel;
   }): string {
     const nonce = getNonce();
@@ -205,13 +227,23 @@ export class ExplanationPanel {
           .join("")}</div>`
       : "";
 
+    const selectedSections = normalizeExplanationSections(input.explanationSections);
     const bodyContent = input.settings
       ? renderSettingsView(input.settings, text)
       : `${metadata}
       <div class="sections">
-        ${renderSectionCard("summary", text.generalIdea, input.sections.summary, input.isError, input.loading, true)}
-        ${renderSectionCard("details", text.details, input.sections.details, input.isError, input.loading, false)}
-        ${renderSectionCard("takeaway", text.takeaway, input.sections.takeaway, input.isError, input.loading, false)}
+        ${selectedSections
+          .map((section) =>
+            renderSectionCard(
+              section,
+              getSectionLabel(section, text),
+              input.sections[section],
+              input.isError,
+              input.loading,
+              section === "summary"
+            )
+          )
+          .join("")}
       </div>
       <div class="hint">${escapeHtml(text.hint)}</div>`;
 
@@ -537,6 +569,23 @@ export class ExplanationPanel {
         margin-right: 6px;
       }
 
+      .checkboxRow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .checkboxOption {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 4px 8px;
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 8px;
+        color: var(--vscode-editor-foreground);
+        background: color-mix(in srgb, var(--vscode-editor-background) 72%, var(--vscode-editorWidget-background));
+      }
+
       .settingsActions {
         display: flex;
         flex-wrap: wrap;
@@ -648,6 +697,7 @@ export class ExplanationPanel {
           ollamaUrl: document.querySelector("#ollamaUrl")?.value,
           openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
           anthropicBaseUrl: document.querySelector("#anthropicBaseUrl")?.value,
+          explanationSections: Array.from(document.querySelectorAll("[data-explanation-section]:checked")).map((input) => input.value),
           apiKey: apiKeyInput?.value ?? "",
           clearApiKey: document.querySelector("#clearApiKey")?.checked
         };
@@ -710,6 +760,7 @@ export class ExplanationPanel {
 function renderSettingsView(settings: SettingsViewModel, text: Record<string, string>): string {
   const requiresApiKey = settings.provider !== "ollama";
   const keyStatus = !requiresApiKey ? text.apiKeyNotNeeded : settings.hasApiKey ? text.apiKeyStored : text.apiKeyMissing;
+  const selectedSections = normalizeExplanationSections(settings.explanationSections);
   const statusClass =
     settings.providerStatus.kind === "success"
       ? "statusSuccess"
@@ -745,6 +796,14 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
         <input id="anthropicBaseUrl" value="${escapeHtml(settings.anthropicBaseUrl)}" placeholder="https://api.anthropic.com/v1" />
       </div>
       <div class="field fieldWide">
+        <label>${escapeHtml(text.explanationSections)}</label>
+        <div class="checkboxRow">
+          ${renderSectionCheckbox("summary", text.generalIdea, selectedSections)}
+          ${renderSectionCheckbox("details", text.details, selectedSections)}
+          ${renderSectionCheckbox("takeaway", text.takeaway, selectedSections)}
+        </div>
+      </div>
+      <div class="field fieldWide">
         <label for="apiKey">${escapeHtml(text.apiKey)} - ${escapeHtml(keyStatus)}</label>
         <input id="apiKey" type="password" value="${escapeHtml(settings.apiKey ?? "")}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" data-key-saved="${requiresApiKey && settings.hasApiKey ? "true" : "false"}" ${requiresApiKey ? "" : "disabled"} />
       </div>
@@ -775,8 +834,15 @@ function renderProviderOption(value: string, label: string, selected: string): s
   return `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
 }
 
+function renderSectionCheckbox(section: ExplanationSection, label: string, selectedSections: ExplanationSection[]): string {
+  return `<label class="checkboxOption">
+    <input type="checkbox" value="${section}" data-explanation-section ${selectedSections.includes(section) ? "checked" : ""} />
+    ${escapeHtml(label)}
+  </label>`;
+}
+
 function renderSectionCard(
-  section: SectionKey,
+  section: ExplanationSection,
   label: string,
   content: string,
   isError: boolean,
@@ -858,6 +924,23 @@ function renderRichText(value: string): string {
     .join("");
 }
 
+function normalizeExplanationSections(sections: readonly ExplanationSection[] | undefined): ExplanationSection[] {
+  const selectedSections = allExplanationSections.filter((section) => sections?.includes(section));
+  return selectedSections.length ? selectedSections : ["summary"];
+}
+
+function getSectionLabel(section: ExplanationSection, text: Record<string, string>): string {
+  switch (section) {
+    case "details":
+      return text.details;
+    case "takeaway":
+      return text.takeaway;
+    case "summary":
+    default:
+      return text.generalIdea;
+  }
+}
+
 function getFrenchUiText(): Record<string, string> {
   return {
     appName: "XPlanator",
@@ -883,6 +966,7 @@ function getFrenchUiText(): Record<string, string> {
     hint: "Astuce : selectionne juste la partie qui te bloque pour obtenir une explication plus nette.",
     provider: "Fournisseur",
     model: "Modele",
+    explanationSections: "Sections a generer",
     ollamaUrl: "URL Ollama",
     openAiBaseUrl: "URL de base compatible OpenAI",
     anthropicBaseUrl: "URL de base compatible Anthropic",
@@ -937,6 +1021,7 @@ function getUiText(language: UiLanguage): Record<string, string> {
       hint: "Tip: select only the part that blocks you to get a sharper explanation.",
       provider: "Provider",
       model: "Model",
+      explanationSections: "Sections to generate",
       ollamaUrl: "Ollama URL",
       openAiBaseUrl: "OpenAI-compatible base URL",
       anthropicBaseUrl: "Anthropic-compatible base URL",

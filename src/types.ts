@@ -6,6 +6,8 @@ export type ResponseStyle = "simple" | "technical" | "beginner";
 
 export type UiLanguage = "fr" | "en";
 
+export type ExplanationSection = "summary" | "details" | "takeaway";
+
 export interface ExtensionConfig {
   provider: ModelProvider;
   ollamaUrl: string;
@@ -20,6 +22,7 @@ export interface ExtensionConfig {
   maxRelatedSnippets: number;
   maxRelatedLinesPerSnippet: number;
   maxContextCharacters: number;
+  explanationSections: ExplanationSection[];
 }
 
 export interface ModelSettingsInput {
@@ -28,6 +31,7 @@ export interface ModelSettingsInput {
   ollamaUrl: string;
   openAiBaseUrl: string;
   anthropicBaseUrl: string;
+  explanationSections?: ExplanationSection[];
   apiKey?: string;
   clearApiKey?: boolean;
 }
@@ -65,6 +69,7 @@ export interface PromptInput {
   context: CodeContext;
   responseLanguage: string;
   responseStyle: ResponseStyle;
+  explanationSections: ExplanationSection[];
 }
 
 export interface ExplainRequest {

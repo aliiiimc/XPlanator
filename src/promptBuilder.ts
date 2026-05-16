@@ -1,4 +1,4 @@
-import { ExplanationMode, PromptInput, ResponseStyle } from "./types";
+import { ExplanationMode, ExplanationSection, PromptInput, ResponseStyle } from "./types";
 
 export function buildPrompt(input: PromptInput, mode: ExplanationMode): string {
   const basePrompt = buildBasePrompt(input);
@@ -27,32 +27,46 @@ Reponse courte.`;
 
   if (mode === "detailed") {
     const format = getResponseFormat(lang);
-    return isEnglish
-      ? `${basePrompt}
-
-Additional instruction:
-Explain this code in more depth, but put this detail only in the ${format.detailsLabel} section.
+    const sections = getSelectedSections(input.explanationSections);
+    const detailInstruction = sections.includes("details")
+      ? isEnglish
+        ? `Explain this code in more depth, but put this detail only in the ${format.detailsLabel} section.
 Describe in ${format.detailsLabel}:
 1. its role;
 2. its inputs;
 3. its outputs;
 4. the important steps;
 5. possible side effects;
-6. possible bugs or risks if you see any.
-Keep the ${format.takeawayLabel} section very short: a single reminder sentence, with no lists or new details.
-Stay educational and clear.`
-      : `${basePrompt}
-
-Instruction supplementaire :
-Explique ce code plus en profondeur, mais mets ce detail uniquement dans la section ${format.detailsLabel}.
+6. possible bugs or risks if you see any.`
+        : `Explique ce code plus en profondeur, mais mets ce detail uniquement dans la section ${format.detailsLabel}.
 Decris dans ${format.detailsLabel} :
 1. son role ;
 2. ses entrees ;
 3. ses sorties ;
 4. les etapes importantes ;
 5. les effets de bord possibles ;
-6. les bugs ou risques possibles si tu en vois.
-Garde la section ${format.takeawayLabel} tres courte : une seule phrase de rappel, sans liste ni nouveaux details.
+6. les bugs ou risques possibles si tu en vois.`
+      : isEnglish
+        ? "Explain only the requested section or sections, with enough depth to be useful."
+        : "Explique uniquement la ou les sections demandees, avec assez de profondeur pour etre utile.";
+    const takeawayInstruction = sections.includes("takeaway")
+      ? isEnglish
+        ? `Keep the ${format.takeawayLabel} section very short: a single reminder sentence, with no lists or new details.`
+        : `Garde la section ${format.takeawayLabel} tres courte : une seule phrase de rappel, sans liste ni nouveaux details.`
+      : "";
+
+    return isEnglish
+      ? `${basePrompt}
+
+Additional instruction:
+${detailInstruction}
+${takeawayInstruction}
+Stay educational and clear.`
+      : `${basePrompt}
+
+Instruction supplementaire :
+${detailInstruction}
+${takeawayInstruction}
 Reste pedagogique et clair.`;
   }
 
@@ -64,6 +78,7 @@ function buildBasePrompt(input: PromptInput): string {
   const isEnglish = responseLanguage.toLowerCase().startsWith("en");
   const styleInstruction = getStyleInstruction(responseStyle, isEnglish);
   const format = getResponseFormat(responseLanguage);
+  const responseFormat = buildResponseFormatInstructions(responseLanguage, input.explanationSections);
 
   const symbolLine = isEnglish
     ? context.symbolUnderCursor
@@ -145,16 +160,11 @@ ${context.surroundingCode}
 
 ${relatedContextBlock}
 
+Reply only with the requested section or sections.
+Do not add omitted sections.
 Reply with exactly this format:
 
-${format.summaryLabel}:
-[very short explanation, 1 sentence]
-
-${format.detailsLabel}:
-[the main explanation. If the user asked for more detail, add it here only]
-
-${format.takeawayLabel}:
-[a single simple sentence that restates the main idea. No list. No new details]`;
+${responseFormat}`;
   }
 
   return `Tu es un assistant pedagogique qui aide des debutants a comprendre du code.
@@ -196,16 +206,11 @@ ${context.surroundingCode}
 
 ${relatedContextBlock}
 
+Reponds seulement avec la ou les sections demandees.
+N'ajoute pas les sections omises.
 Reponds avec exactement ce format :
 
-${format.summaryLabel}:
-[explication tres courte, 1 phrase]
-
-${format.detailsLabel}:
-[l'explication principale. Si l'utilisateur demande plus de detail, ajoute le detail ici uniquement]
-
-${format.takeawayLabel}:
-[une seule phrase simple qui reformule l'idee principale. Pas de liste. Pas de nouveaux details]`;
+${responseFormat}`;
 }
 
 function getStyleInstruction(style: ResponseStyle, isEnglish: boolean): string {
@@ -250,4 +255,33 @@ function getResponseFormat(language: string): {
     detailsLabel: "Details",
     takeawayLabel: "A retenir"
   };
+}
+
+function buildResponseFormatInstructions(language: string, sections: ExplanationSection[]): string {
+  const selectedSections = getSelectedSections(sections);
+  const format = getResponseFormat(language);
+  const isEnglish = language.toLowerCase().startsWith("en");
+  const sectionPrompts: Record<ExplanationSection, string> = isEnglish
+    ? {
+        summary: `${format.summaryLabel}:
+[very short explanation, 1 sentence]`,
+        details: `${format.detailsLabel}:
+[the main explanation. If the user asked for more detail, add it here only]`,
+        takeaway: `${format.takeawayLabel}:
+[a single simple sentence that restates the main idea. No list. No new details]`
+      }
+    : {
+        summary: `${format.summaryLabel}:
+[explication tres courte, 1 phrase]`,
+        details: `${format.detailsLabel}:
+[l'explication principale. Si l'utilisateur demande plus de detail, ajoute le detail ici uniquement]`,
+        takeaway: `${format.takeawayLabel}:
+[une seule phrase simple qui reformule l'idee principale. Pas de liste. Pas de nouveaux details]`
+      };
+
+  return selectedSections.map((section) => sectionPrompts[section]).join("\n\n");
+}
+
+function getSelectedSections(sections: ExplanationSection[]): ExplanationSection[] {
+  return sections.length ? sections : ["summary"];
 }

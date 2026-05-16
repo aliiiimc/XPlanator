@@ -25,7 +25,8 @@ test("buildPrompt uses English response format labels for en language", () => {
     {
       context: createContext(),
       responseLanguage: "en",
-      responseStyle: "beginner"
+      responseStyle: "beginner",
+      explanationSections: ["summary", "details", "takeaway"]
     },
     "quick"
   );
@@ -40,7 +41,8 @@ test("buildPrompt adds simplified-mode instructions", () => {
     {
       context: createContext(),
       responseLanguage: "fr",
-      responseStyle: "simple"
+      responseStyle: "simple",
+      explanationSections: ["summary", "details", "takeaway"]
     },
     "simple"
   );
@@ -67,7 +69,8 @@ test("buildPrompt includes related snippets block when provided", () => {
         ]
       }),
       responseLanguage: "fr",
-      responseStyle: "technical"
+      responseStyle: "technical",
+      explanationSections: ["summary", "details", "takeaway"]
     },
     "detailed"
   );
@@ -76,4 +79,21 @@ test("buildPrompt includes related snippets block when provided", () => {
   assert.match(prompt, /Extrait 1/);
   assert.match(prompt, /math\.ts/);
   assert.match(prompt, /10-15/);
+});
+
+test("buildPrompt only asks for selected sections", () => {
+  const prompt = buildPrompt(
+    {
+      context: createContext(),
+      responseLanguage: "en",
+      responseStyle: "beginner",
+      explanationSections: ["details"]
+    },
+    "quick"
+  );
+
+  assert.doesNotMatch(prompt, /Summary:/);
+  assert.match(prompt, /Details:/);
+  assert.doesNotMatch(prompt, /Key takeaway:/);
+  assert.match(prompt, /Do not add omitted sections/);
 });

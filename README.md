@@ -18,6 +18,8 @@ Understand this piece of code, right here, without leaving VS Code.
 - BYOK cloud mode for OpenAI/Codex, Gemini, and Claude
 - No XPlanator backend
 - Explains a selection or the current cursor context
+- Opens from the editor title bar without starting an explanation
+- Lets users choose which sections to generate to reduce output tokens
 - `Plus simple` and `Plus detaille` follow-up buttons
 - Separate sections for summary, details, and takeaway
 - Copy buttons for each section
@@ -110,6 +112,10 @@ ollama pull qwen2.5-coder
 2. Right click.
 3. Choose `Explain Code: Explain Selection`.
 
+### Open The Panel
+
+Click the XPlanator icon in the editor title bar to open the side panel without starting an explanation.
+
 ### Explain At Cursor
 
 1. Put the cursor on a line, variable, function, or class.
@@ -122,9 +128,10 @@ ollama pull qwen2.5-coder
 2. Click `Parametres` in the bottom-right corner.
 3. Choose `Ollama local`, `OpenAI / Codex`, `Gemini`, or `Claude`.
 4. Enter the model name.
-5. For cloud providers, paste your API key.
-6. Use `Check connection` if you want to verify the current provider from the settings panel.
-7. Click `Enregistrer`.
+5. Choose the sections to generate: `Idee generale`, `Details`, and/or `A retenir`.
+6. For cloud providers, paste your API key.
+7. Use `Check connection` if you want to verify the current provider from the settings panel.
+8. Click `Enregistrer`.
 
 ## VS Code Settings
 
@@ -133,6 +140,7 @@ ollama pull qwen2.5-coder
 - `explainCode.openAiBaseUrl`: OpenAI-compatible base URL, default `https://api.openai.com/v1`
 - `explainCode.anthropicBaseUrl`: Anthropic-compatible Messages API base URL, default `https://api.anthropic.com/v1`
 - `explainCode.model`: model name
+- `explainCode.explanationSections`: generated sections, any combination of `summary`, `details`, and `takeaway`
 - `explainCode.responseStyle`: `simple`, `technical`, or `beginner`
 - `explainCode.language`: `fr` or `en`
 - `explainCode.timeoutSeconds`: AI provider request timeout (applies to all providers)

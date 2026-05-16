@@ -16,6 +16,7 @@ interface ProviderRequest {
 }
 
 interface OpenAiChatCompletionsResponse {
+  model?: string;
   choices?: Array<{
     message?: {
       content?: string | Array<{
@@ -202,6 +203,7 @@ export class AiClient {
   }
 
   private async generateWithOpenAi(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
+    validateFreeModelRequestedModel(config);
     const apiKey = await this.requireApiKey("openai", config.language, apiKeyOverride);
     const response = await this.requestJson<OpenAiChatCompletionsResponse>(
       buildVersionedProviderUrl(config.openAiBaseUrl, "chat/completions", config.language),
@@ -212,19 +214,10 @@ export class AiClient {
         headers: {
           Authorization: `Bearer ${apiKey}`
         },
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            {
-              role: "user",
-              content: request.prompt
-            }
-          ],
-          temperature: 0.2,
-          max_tokens: request.maxTokens
-        })
+        body: JSON.stringify(buildOpenAiChatRequestBody(config, request))
       }
     );
+    validateOpenAiRoutedModel(config, response);
     const output = extractOpenAiChatOutput(response);
 
     if (!output?.trim()) {
@@ -378,6 +371,72 @@ function buildVersionedProviderUrl(baseUrl: string, route: string, language: UiL
   return parsed.toString();
 }
 
+function buildOpenAiChatRequestBody(config: ExtensionConfig, request: ProviderRequest): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: config.model,
+    messages: [
+      {
+        role: "user",
+        content: request.prompt
+      }
+    ],
+    temperature: 0.2,
+    max_tokens: request.maxTokens
+  };
+
+  if (isFreeModelEndpoint(config.openAiBaseUrl)) {
+    body.models = [config.model];
+    body.provider = {
+      allow_fallbacks: false
+    };
+  }
+
+  return body;
+}
+
+function validateFreeModelRequestedModel(config: ExtensionConfig): void {
+  if (!isFreeModelEndpoint(config.openAiBaseUrl)) {
+    return;
+  }
+
+  const blockedModels = new Set(["gpt-5-nano", "gpt-5-mini", "gpt-4o-mini"]);
+  const requestedModel = normalizeModelForComparison(config.model);
+
+  if (!blockedModels.has(requestedModel)) {
+    return;
+  }
+
+  throw new Error(localizeAiError(config.language, "freemodel_model_blocked", config.model));
+}
+
+function validateOpenAiRoutedModel(config: ExtensionConfig, response: OpenAiChatCompletionsResponse): void {
+  if (!isFreeModelEndpoint(config.openAiBaseUrl) || !response.model) {
+    return;
+  }
+
+  const requestedModel = normalizeModelForComparison(config.model);
+  const routedModel = normalizeModelForComparison(response.model);
+
+  if (requestedModel === routedModel) {
+    return;
+  }
+
+  throw new Error(localizeAiError(config.language, "routed_model_mismatch", `${config.model} -> ${response.model}`));
+}
+
+function isFreeModelEndpoint(baseUrl: string): boolean {
+  try {
+    const parsed = new URL(baseUrl);
+    return parsed.hostname.toLowerCase().endsWith("freemodel.dev");
+  } catch {
+    return false;
+  }
+}
+
+function normalizeModelForComparison(model: string): string {
+  return model.trim().toLowerCase().replace(/[\s_]+/g, "-");
+}
+
 function extractOpenAiChatOutput(response: OpenAiChatCompletionsResponse): string {
   return (
     response.choices
@@ -518,7 +577,9 @@ type AiErrorKey =
   | "missing_model"
   | "truncated_response"
   | "timeout"
-  | "provider_unreachable";
+  | "provider_unreachable"
+  | "routed_model_mismatch"
+  | "freemodel_model_blocked";
 
 function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string): string {
   const messages: Record<UiLanguage, Record<AiErrorKey, string>> = {
@@ -535,7 +596,9 @@ function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string)
       missing_model: "Le modele configure semble absent ou invalide pour ce fournisseur.",
       truncated_response: "{detail} a coupe sa reponse avant la fin. Essayez de relancer ou d'utiliser un modele plus fort.",
       timeout: "Le modele met trop de temps a repondre. Essayez un modele plus leger ou augmentez le timeout dans les parametres.",
-      provider_unreachable: "Impossible de contacter le fournisseur IA. Verifiez la connexion, l'URL ou la cle API."
+      provider_unreachable: "Impossible de contacter le fournisseur IA. Verifiez la connexion, l'URL ou la cle API.",
+      routed_model_mismatch: "Le fournisseur a route la requete vers un autre modele ({detail}). Choisissez un nom de modele que FreeModel execute exactement, ou utilisez un autre endpoint.",
+      freemodel_model_blocked: "FreeModel route {detail} vers gpt-5.4 dans vos logs. La requete est bloquee pour eviter un cout surprise. Choisissez un modele affiche comme moins cher dans FreeModel."
     },
     en: {
       empty_response: "{detail} returned an empty response.",
@@ -550,7 +613,9 @@ function localizeAiError(language: UiLanguage, key: AiErrorKey, detail?: string)
       missing_model: "The configured model seems missing or invalid for this provider.",
       truncated_response: "{detail} stopped before finishing its answer. Try again or use a stronger model.",
       timeout: "The model is taking too long to respond. Try a lighter model or increase the timeout in settings.",
-      provider_unreachable: "Unable to reach the AI provider. Check the connection, URL, or API key."
+      provider_unreachable: "Unable to reach the AI provider. Check the connection, URL, or API key.",
+      routed_model_mismatch: "The provider routed the request to another model ({detail}). Choose a model name FreeModel runs exactly, or use another endpoint.",
+      freemodel_model_blocked: "FreeModel routes {detail} to gpt-5.4 in your logs. The request is blocked to avoid surprise cost. Choose a model shown as cheaper in FreeModel."
     }
   };
 
