@@ -74,6 +74,11 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
+    if (action === "setExplanationSections") {
+      await updateExplanationSections(message.explanationSections);
+      return;
+    }
+
     if (action === "checkSettingsConnection") {
       await checkSettingsConnection(panel, aiClient, message.settings);
       return;
@@ -398,7 +403,9 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
   const ollamaUrl = settings?.ollamaUrl?.trim() || "http://localhost:11434";
   const openAiBaseUrl = settings?.openAiBaseUrl?.trim() || "https://api.openai.com/v1";
   const anthropicBaseUrl = settings?.anthropicBaseUrl?.trim() || "https://api.anthropic.com/v1";
-  const explanationSections = normalizeExplanationSections(settings?.explanationSections);
+  const explanationSections = normalizeExplanationSections(
+    settings?.explanationSections ?? config.get<string[]>("explanationSections", ["summary", "details", "takeaway"])
+  );
 
   validateEndpointUrl(language, ollamaUrl, localize(language, "ollamaEndpointLabel"));
   validateEndpointUrl(language, openAiBaseUrl, localize(language, "openAiEndpointLabel"));
@@ -444,6 +451,12 @@ async function saveSettings(settings: ModelSettingsInput | undefined, aiClient: 
 
   vscode.window.showInformationMessage(localize(language, "settingsSaved"));
   return true;
+}
+
+async function updateExplanationSections(sections: readonly string[] | undefined): Promise<void> {
+  await vscode.workspace
+    .getConfiguration("explainCode")
+    .update("explanationSections", normalizeExplanationSections(sections), vscode.ConfigurationTarget.Global);
 }
 
 function getConfig(): ExtensionConfig {

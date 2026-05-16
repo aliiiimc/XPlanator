@@ -19,7 +19,7 @@ Understand this piece of code, right here, without leaving VS Code.
 - No XPlanator backend
 - Explains a selection or the current cursor context
 - Opens from the editor title bar without starting an explanation
-- Lets users choose which sections to generate to reduce output tokens
+- Lets users tick the sections they want directly in the panel to reduce output tokens
 - `Plus simple` and `Plus detaille` follow-up buttons
 - Separate sections for summary, details, and takeaway
 - Copy buttons for each section
@@ -116,6 +116,10 @@ ollama pull qwen2.5-coder
 
 Click the XPlanator icon in the editor title bar to open the side panel without starting an explanation.
 
+### Choose Explanation Sections
+
+In the main panel, tick `Idee generale`, `Details`, and/or `A retenir` directly on the section cards before launching an explanation. XPlanator asks the model only for the selected sections.
+
 ### Explain At Cursor
 
 1. Put the cursor on a line, variable, function, or class.
@@ -125,13 +129,12 @@ Click the XPlanator icon in the editor title bar to open the side panel without 
 ### Change Provider Or Model
 
 1. Open an explanation panel.
-2. Click `Parametres` in the bottom-right corner.
+2. Click `Parametres` in the panel.
 3. Choose `Ollama local`, `OpenAI / Codex`, `Gemini`, or `Claude`.
 4. Enter the model name.
-5. Choose the sections to generate: `Idee generale`, `Details`, and/or `A retenir`.
-6. For cloud providers, paste your API key.
-7. Use `Check connection` if you want to verify the current provider from the settings panel.
-8. Click `Enregistrer`.
+5. For cloud providers, paste your API key.
+6. Use `Check connection` if you want to verify the current provider from the settings panel.
+7. Click `Enregistrer`.
 
 ## VS Code Settings
 

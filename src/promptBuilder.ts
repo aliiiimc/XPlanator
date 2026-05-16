@@ -251,7 +251,7 @@ function getResponseFormat(language: string): {
   }
 
   return {
-    summaryLabel: "Resume",
+    summaryLabel: "Idee generale",
     detailsLabel: "Details",
     takeawayLabel: "A retenir"
   };

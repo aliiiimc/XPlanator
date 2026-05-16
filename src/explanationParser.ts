@@ -13,7 +13,7 @@ interface TakeawayNormalization {
 
 export function parseExplanation(raw: string, language: UiLanguage): ExplanationSections {
   const normalized = sanitizeModelOutput(raw.replace(/\r\n/g, "\n").trim());
-  const summary = extractSection(normalized, ["Resume", "Résumé", "Summary"]);
+  const summary = extractSection(normalized, ["Idee generale", "Idée générale", "Resume", "Résumé", "Summary"]);
   const details = extractSection(normalized, ["Details", "Détails"]);
   const takeaway = extractSection(normalized, ["A retenir", "À retenir", "Key takeaway", "Takeaway"]);
   const text = getParserText(language);
@@ -120,7 +120,7 @@ function extractSection(content: string, labels: string[]): string {
     .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
   const regex = new RegExp(
-    `(?:^|\\n)\\*{0,2}\\s*(?:${alternation})\\s*:?\\s*\\*{0,2}\\s*([\\s\\S]*?)(?=\\n\\*{0,2}\\s*(?:Resume|Résumé|Summary|Details|Détails|A retenir|À retenir|Key takeaway|Takeaway)\\s*:?\\s*\\*{0,2}|$)`,
+    `(?:^|\\n)\\*{0,2}\\s*(?:${alternation})\\s*:?\\s*\\*{0,2}\\s*([\\s\\S]*?)(?=\\n\\*{0,2}\\s*(?:Idee generale|Idée générale|Resume|Résumé|Summary|Details|Détails|A retenir|À retenir|Key takeaway|Takeaway)\\s*:?\\s*\\*{0,2}|$)`,
     "i"
   );
   const match = content.match(regex);

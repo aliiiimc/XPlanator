@@ -11,11 +11,13 @@ type PanelAction =
   | "saveSettings"
   | "cancelSettings"
   | "checkSettingsConnection"
+  | "setExplanationSections"
   | `copy:${SectionKey}`;
 
 export interface PanelMessage {
   action?: PanelAction;
   settings?: ModelSettingsInput;
+  explanationSections?: ExplanationSection[];
 }
 
 interface PanelState {
@@ -232,15 +234,16 @@ export class ExplanationPanel {
       ? renderSettingsView(input.settings, text)
       : `${metadata}
       <div class="sections">
-        ${selectedSections
+        ${allExplanationSections
           .map((section) =>
             renderSectionCard(
               section,
               getSectionLabel(section, text),
-              input.sections[section],
+              selectedSections.includes(section) ? input.sections[section] : text.sectionDisabled,
               input.isError,
               input.loading,
-              section === "summary"
+              section === "summary",
+              selectedSections.includes(section)
             )
           )
           .join("")}
@@ -565,25 +568,29 @@ export class ExplanationPanel {
       }
 
       input[type="checkbox"] {
+        accent-color: var(--vscode-button-background);
         width: auto;
         margin-right: 6px;
       }
 
-      .checkboxRow {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-
-      .checkboxOption {
+      .sectionToggle {
         display: inline-flex;
         align-items: center;
-        min-height: 28px;
-        padding: 4px 8px;
-        border: 1px solid var(--vscode-panel-border);
-        border-radius: 8px;
-        color: var(--vscode-editor-foreground);
-        background: color-mix(in srgb, var(--vscode-editor-background) 72%, var(--vscode-editorWidget-background));
+        gap: 7px;
+        min-width: 0;
+      }
+
+      .sectionToggle input {
+        flex: 0 0 auto;
+        margin: 0;
+      }
+
+      .sectionMuted {
+        opacity: 0.68;
+      }
+
+      .sectionMuted .content {
+        color: var(--vscode-descriptionForeground);
       }
 
       .settingsActions {
@@ -697,10 +704,12 @@ export class ExplanationPanel {
           ollamaUrl: document.querySelector("#ollamaUrl")?.value,
           openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
           anthropicBaseUrl: document.querySelector("#anthropicBaseUrl")?.value,
-          explanationSections: Array.from(document.querySelectorAll("[data-explanation-section]:checked")).map((input) => input.value),
           apiKey: apiKeyInput?.value ?? "",
           clearApiKey: document.querySelector("#clearApiKey")?.checked
         };
+      };
+      const collectExplanationSections = () => {
+        return Array.from(document.querySelectorAll("[data-explanation-section]:checked")).map((input) => input.value);
       };
       const actions = document.querySelectorAll("[data-action]");
       for (const button of actions) {
@@ -718,6 +727,19 @@ export class ExplanationPanel {
           }
 
           vscode.postMessage({ action });
+        });
+      }
+      const sectionToggles = document.querySelectorAll("[data-explanation-section]");
+      for (const toggle of sectionToggles) {
+        toggle.addEventListener("change", () => {
+          if (collectExplanationSections().length === 0) {
+            toggle.checked = true;
+          }
+
+          vscode.postMessage({
+            action: "setExplanationSections",
+            explanationSections: collectExplanationSections()
+          });
         });
       }
       const provider = document.querySelector("#provider");
@@ -760,7 +782,6 @@ export class ExplanationPanel {
 function renderSettingsView(settings: SettingsViewModel, text: Record<string, string>): string {
   const requiresApiKey = settings.provider !== "ollama";
   const keyStatus = !requiresApiKey ? text.apiKeyNotNeeded : settings.hasApiKey ? text.apiKeyStored : text.apiKeyMissing;
-  const selectedSections = normalizeExplanationSections(settings.explanationSections);
   const statusClass =
     settings.providerStatus.kind === "success"
       ? "statusSuccess"
@@ -796,14 +817,6 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
         <input id="anthropicBaseUrl" value="${escapeHtml(settings.anthropicBaseUrl)}" placeholder="https://api.anthropic.com/v1" />
       </div>
       <div class="field fieldWide">
-        <label>${escapeHtml(text.explanationSections)}</label>
-        <div class="checkboxRow">
-          ${renderSectionCheckbox("summary", text.generalIdea, selectedSections)}
-          ${renderSectionCheckbox("details", text.details, selectedSections)}
-          ${renderSectionCheckbox("takeaway", text.takeaway, selectedSections)}
-        </div>
-      </div>
-      <div class="field fieldWide">
         <label for="apiKey">${escapeHtml(text.apiKey)} - ${escapeHtml(keyStatus)}</label>
         <input id="apiKey" type="password" value="${escapeHtml(settings.apiKey ?? "")}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" data-key-saved="${requiresApiKey && settings.hasApiKey ? "true" : "false"}" ${requiresApiKey ? "" : "disabled"} />
       </div>
@@ -834,20 +847,14 @@ function renderProviderOption(value: string, label: string, selected: string): s
   return `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
 }
 
-function renderSectionCheckbox(section: ExplanationSection, label: string, selectedSections: ExplanationSection[]): string {
-  return `<label class="checkboxOption">
-    <input type="checkbox" value="${section}" data-explanation-section ${selectedSections.includes(section) ? "checked" : ""} />
-    ${escapeHtml(label)}
-  </label>`;
-}
-
 function renderSectionCard(
   section: ExplanationSection,
   label: string,
   content: string,
   isError: boolean,
   loading: boolean,
-  isStrong: boolean
+  isStrong: boolean,
+  selected: boolean
 ): string {
   const className =
     section === "summary"
@@ -856,15 +863,18 @@ function renderSectionCard(
         ? "sectionDetails"
         : "sectionTakeaway";
 
-  return `<section class="card ${className} ${isError ? "error" : ""} ${loading ? "loading" : ""}">
+  return `<section class="card ${className} ${isError ? "error" : ""} ${loading ? "loading" : ""} ${selected ? "" : "sectionMuted"}">
     <div class="sectionHeader">
-      <div class="sectionLabel">${escapeHtml(label)}</div>
-      <button class="sectionCopy" data-action="copy:${section}" title="Copy" aria-label="Copy ${escapeHtml(label)}">
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M5 2.75A1.75 1.75 0 0 1 6.75 1h5.5A1.75 1.75 0 0 1 14 2.75v7.5A1.75 1.75 0 0 1 12.25 12h-5.5A1.75 1.75 0 0 1 5 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h5.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-          <path d="M2 5.75C2 4.784 2.784 4 3.75 4h.5v1.5h-.5a.25.25 0 0 0-.25.25v6.5c0 .138.112.25.25.25h5.5a.25.25 0 0 0 .25-.25v-.5H11v.5A1.75 1.75 0 0 1 9.25 14h-5.5A1.75 1.75 0 0 1 2 12.25Z"></path>
-        </svg>
-      </button>
+      <label class="sectionToggle">
+        <input type="checkbox" value="${section}" data-explanation-section ${selected ? "checked" : ""} />
+        <span class="sectionLabel">${escapeHtml(label)}</span>
+      </label>
+      ${selected ? `<button class="sectionCopy" data-action="copy:${section}" title="Copy" aria-label="Copy ${escapeHtml(label)}">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M5 2.75A1.75 1.75 0 0 1 6.75 1h5.5A1.75 1.75 0 0 1 14 2.75v7.5A1.75 1.75 0 0 1 12.25 12h-5.5A1.75 1.75 0 0 1 5 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h5.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
+            <path d="M2 5.75C2 4.784 2.784 4 3.75 4h.5v1.5h-.5a.25.25 0 0 0-.25.25v6.5c0 .138.112.25.25.25h5.5a.25.25 0 0 0 .25-.25v-.5H11v.5A1.75 1.75 0 0 1 9.25 14h-5.5A1.75 1.75 0 0 1 2 12.25Z"></path>
+          </svg>
+        </button>` : ""}
     </div>
     <div class="content ${isStrong ? "contentStrong " : ""}contentText">${renderRichText(content)}</div>
   </section>`;
@@ -955,6 +965,7 @@ function getFrenchUiText(): Record<string, string> {
     loadingTakeaway: "Garde le contexte ouvert, la reponse arrive ici.",
     errorSummary: "Je n'ai pas pu generer l'explication.",
     errorTakeaway: "Tu peux reessayer ou verifier la connexion du fournisseur configure.",
+    sectionDisabled: "Cette section ne sera pas demandee lors de la prochaine explication.",
     moreSimple: "Plus simple",
     moreDetailed: "Plus detaille",
     retry: "Reessayer",
@@ -1010,6 +1021,7 @@ function getUiText(language: UiLanguage): Record<string, string> {
       loadingTakeaway: "Keep the file context open. The answer will appear here.",
       errorSummary: "I could not generate the explanation.",
       errorTakeaway: "You can retry or check the configured provider connection.",
+      sectionDisabled: "This section will not be requested in the next explanation.",
       moreSimple: "Simpler",
       moreDetailed: "More detail",
       retry: "Retry",
