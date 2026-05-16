@@ -7,7 +7,6 @@ This document explains how API keys and code snippets are handled.
 ## Short Version
 
 - XPlanator has no project-owned backend.
-- Free Lite is the default provider and does not send code anywhere.
 - Ollama runs locally when selected.
 - Cloud providers are optional and user-configured.
 - API keys are stored with VS Code `SecretStorage`.
@@ -15,7 +14,6 @@ This document explains how API keys and code snippets are handled.
 - API keys are never shown again after saving.
 - API keys are never logged by XPlanator.
 - API keys are only read when making a request to the selected provider.
-- Free Lite does not read API keys, call a model, or make network requests.
 - The configured provider request timeout applies to all AI provider HTTP requests.
 - Ollama uses a reduced-context profile by default to avoid sending unnecessarily large prompts to local models.
 - Saved keys can be deleted from the XPlanator settings panel.
@@ -34,10 +32,6 @@ This document explains how API keys and code snippets are handled.
 8. The user can verify provider connectivity from the settings panel before saving changes.
 
 ## What Is Sent To Providers
-
-### Free Lite
-
-When `lite` is selected, XPlanator generates a structural explanation inside the extension host. No code, context, model request, or API key is sent anywhere.
 
 ### Ollama
 
@@ -70,7 +64,6 @@ When `anthropic` is selected, the selected code and context are sent to the conf
 Relevant files:
 
 - `src/aiClient.ts`: reads and stores secrets through `vscode.SecretStorage`
-- `src/liteExplainer.ts`: generates Free Lite explanations without provider requests
 - `src/webviewPanel.ts`: renders the API key input empty and only sends a new value when the user saves
 - `src/extension.ts`: saves provider settings and routes requests
 - `.gitignore`: excludes `.env`, `.env.*`, logs, and packaged `.vsix` files
@@ -91,7 +84,6 @@ Important limits:
 - If the user's operating system account is compromised, local secrets may be at risk.
 - If VS Code or the OS keychain is compromised, secrets may be at risk.
 - Cloud providers receive the selected code/context when the user chooses a cloud provider.
-- Free Lite is structural and deterministic; it is less capable than a model and should not be treated as deep semantic analysis.
 - The selected provider's own security and data-retention policies still apply.
 - Users should create scoped API keys when the provider supports it, rotate keys periodically, and revoke keys they no longer use.
 

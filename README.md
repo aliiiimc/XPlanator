@@ -2,7 +2,7 @@
 
 XPlanator is a VS Code extension for understanding code, not blindly generating more of it.
 
-It explains the selected code or the symbol under your cursor in a clear side panel, with a short summary, deeper details, and one compact takeaway. It starts with Free Lite, an instant structural explainer that needs no model or API key, and it also supports Ollama plus personal API keys for OpenAI/Codex, Gemini, and Claude.
+It explains the selected code or the symbol under your cursor in a clear side panel, with a short summary, deeper details, and one compact takeaway. It supports OpenAI/Codex, Gemini, Claude, and local Ollama.
 
 ## Why This Exists
 
@@ -14,9 +14,8 @@ Understand this piece of code, right here, without leaving VS Code.
 
 ## Highlights
 
-- Free Lite by default: instant structural explanations with no AI request
 - Local Ollama support when you want model-based explanations on your machine
-- Optional BYOK cloud mode for OpenAI/Codex, Gemini, and Claude
+- BYOK cloud mode for OpenAI/Codex, Gemini, and Claude
 - No XPlanator backend
 - Explains a selection or the current cursor context
 - `Plus simple` and `Plus detaille` follow-up buttons
@@ -28,11 +27,9 @@ Understand this piece of code, right here, without leaving VS Code.
 
 ## Privacy Model
 
-By default, XPlanator uses Free Lite. It does not send code anywhere; it only reads the selected snippet and visible context inside VS Code.
-
 If you choose Ollama, requests are sent to your local Ollama server, usually `http://localhost:11434`.
 
-If you choose a cloud provider in `Parametres`, the code you ask XPlanator to explain is sent directly to that provider using your own API key. API keys are stored with VS Code SecretStorage, not in this repository or in plain text configuration files.
+If you choose a cloud provider in `Parametres`, the code you ask XPlanator to explain is sent directly to that provider using your own API key. By default, new installs start on OpenAI/Codex. API keys are stored with VS Code SecretStorage, not in this repository or in plain text configuration files.
 
 Security details:
 
@@ -56,7 +53,6 @@ Read [SECURITY_MODEL.md](./SECURITY_MODEL.md) for the full security model and ve
 
 - Explain selected code
 - Explain the current line or symbol under the cursor
-- Free Lite works without setup, API keys, local models, or network calls
 - Ask for a simpler explanation
 - Ask for a more detailed explanation
 - Keep extra detail in `Details`, while `A retenir` stays short
@@ -70,13 +66,12 @@ Read [SECURITY_MODEL.md](./SECURITY_MODEL.md) for the full security model and ve
 
 | Provider | Default model | Notes |
 | --- | --- | --- |
-| Free Lite | none | Default, no AI, no model, no API key |
 | Ollama | `qwen2.5-coder` | Local AI, no API key |
-| OpenAI / Codex | `gpt-5` | Requires API key |
+| OpenAI / Codex | `gpt-5-nano` | Default, requires API key |
 | Gemini | `gemini-2.5-flash` | Requires API key |
 | Claude | `claude-sonnet-4-5` | Requires API key |
 
-Free Lite ignores the model field. Model names are editable for AI providers. If a provider changes its model names, update the model field in `Parametres`.
+Model names are editable. If a provider changes its model names, update the model field in `Parametres`.
 
 ## Local Development
 
@@ -125,23 +120,19 @@ ollama pull qwen2.5-coder
 
 1. Open an explanation panel.
 2. Click `Parametres` in the bottom-right corner.
-3. Choose `Free Lite`, `Ollama local`, `OpenAI / Codex`, `Gemini`, or `Claude`.
-4. Enter the model name for AI providers. Free Lite ignores this field.
+3. Choose `Ollama local`, `OpenAI / Codex`, `Gemini`, or `Claude`.
+4. Enter the model name.
 5. For cloud providers, paste your API key.
 6. Use `Check connection` if you want to verify the current provider from the settings panel.
 7. Click `Enregistrer`.
 
 ## VS Code Settings
 
-- `explainCode.provider`: `lite`, `ollama`, `openai`, `gemini`, or `anthropic`
+- `explainCode.provider`: `ollama`, `openai`, `gemini`, or `anthropic`
 - `explainCode.ollamaUrl`: local Ollama URL, default `http://localhost:11434`
 - `explainCode.openAiBaseUrl`: OpenAI-compatible base URL, default `https://api.openai.com/v1`
-<<<<<<< Updated upstream
 - `explainCode.anthropicBaseUrl`: Anthropic-compatible Messages API base URL, default `https://api.anthropic.com/v1`
 - `explainCode.model`: model name
-=======
-- `explainCode.model`: model name for AI providers; ignored by Free Lite
->>>>>>> Stashed changes
 - `explainCode.responseStyle`: `simple`, `technical`, or `beginner`
 - `explainCode.language`: `fr` or `en`
 - `explainCode.timeoutSeconds`: AI provider request timeout (applies to all providers)

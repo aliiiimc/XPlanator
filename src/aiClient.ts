@@ -15,13 +15,15 @@ interface ProviderRequest {
   maxTokens: number;
 }
 
-interface OpenAiResponse {
-  output_text?: string;
-  output?: Array<{
-    content?: Array<{
-      text?: string;
-      type?: string;
-    }>;
+interface OpenAiChatCompletionsResponse {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{
+        text?: string;
+        type?: string;
+      }>;
+    };
+    text?: string;
   }>;
   error?: {
     message?: string;
@@ -70,8 +72,6 @@ export class AiClient {
 
   async generate(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
     switch (config.provider) {
-      case "lite":
-        throw new Error("Free Lite explanations are generated without AI provider requests.");
       case "openai":
         return this.generateWithOpenAi(config, request, apiKeyOverride);
       case "gemini":
@@ -85,13 +85,6 @@ export class AiClient {
   }
 
   async checkConnection(config: ExtensionConfig, apiKeyOverride?: string): Promise<OllamaStatus> {
-    if (config.provider === "lite") {
-      return {
-        connected: true,
-        models: ["free-lite"]
-      };
-    }
-
     if (config.provider === "ollama") {
       return this.checkOllamaConnection(config);
     }
@@ -132,15 +125,15 @@ export class AiClient {
   }
 
   async hasApiKey(provider: ModelProvider): Promise<boolean> {
-    if (provider === "lite" || provider === "ollama") {
+    if (provider === "ollama") {
       return true;
     }
 
-    return Boolean(await this.secrets.get(getSecretKey(provider)));
+    return Boolean(normalizeApiKeyInput(await this.secrets.get(getSecretKey(provider))));
   }
 
   async saveApiKey(provider: ModelProvider, apiKey?: string, clearExisting = false): Promise<void> {
-    if (provider === "lite" || provider === "ollama") {
+    if (provider === "ollama") {
       return;
     }
 
@@ -149,7 +142,7 @@ export class AiClient {
       return;
     }
 
-    const normalized = apiKey?.trim();
+    const normalized = normalizeApiKeyInput(apiKey);
 
     if (!normalized) {
       return;
@@ -210,8 +203,8 @@ export class AiClient {
 
   private async generateWithOpenAi(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
     const apiKey = await this.requireApiKey("openai", config.language, apiKeyOverride);
-    const response = await this.requestJson<OpenAiResponse>(
-      buildVersionedProviderUrl(config.openAiBaseUrl, "responses", config.language),
+    const response = await this.requestJson<OpenAiChatCompletionsResponse>(
+      buildVersionedProviderUrl(config.openAiBaseUrl, "chat/completions", config.language),
       config.timeoutSeconds,
       config.language,
       {
@@ -221,18 +214,18 @@ export class AiClient {
         },
         body: JSON.stringify({
           model: config.model,
-          input: request.prompt,
-          max_output_tokens: request.maxTokens
+          messages: [
+            {
+              role: "user",
+              content: request.prompt
+            }
+          ],
+          temperature: 0.2,
+          max_tokens: request.maxTokens
         })
       }
     );
-    const output =
-      response.output_text ??
-      response.output
-        ?.flatMap((item) => item.content ?? [])
-        .map((content) => content.text)
-        .filter((text): text is string => Boolean(text?.trim()))
-        .join("\n");
+    const output = extractOpenAiChatOutput(response);
 
     if (!output?.trim()) {
       throw new Error(localizeAiError(config.language, "empty_response", getProviderLabel("openai")));
@@ -320,7 +313,7 @@ export class AiClient {
   }
 
   private async requireApiKey(provider: ModelProvider, language: UiLanguage, apiKeyOverride?: string): Promise<string> {
-    const apiKey = apiKeyOverride?.trim() || (await this.secrets.get(getSecretKey(provider)));
+    const apiKey = normalizeApiKeyInput(apiKeyOverride) || normalizeApiKeyInput(await this.secrets.get(getSecretKey(provider)));
 
     if (!apiKey?.trim()) {
       throw new Error(localizeAiError(language, "missing_api_key", getProviderLabel(provider)));
@@ -385,8 +378,49 @@ function buildVersionedProviderUrl(baseUrl: string, route: string, language: UiL
   return parsed.toString();
 }
 
+function extractOpenAiChatOutput(response: OpenAiChatCompletionsResponse): string {
+  return (
+    response.choices
+      ?.map((choice) => {
+        if (choice.text?.trim()) {
+          return choice.text;
+        }
+
+        const content = choice.message?.content;
+
+        if (typeof content === "string") {
+          return content;
+        }
+
+        return content
+          ?.map((part) => part.text)
+          .filter((text): text is string => Boolean(text?.trim()))
+          .join("\n");
+      })
+      .filter((text): text is string => Boolean(text?.trim()))
+      .join("\n") ?? ""
+  );
+}
+
 function getSecretKey(provider: ModelProvider): string {
   return `xplanator.${provider}.apiKey`;
+}
+
+function normalizeApiKeyInput(apiKey: string | undefined): string | undefined {
+  const normalized = apiKey?.trim();
+
+  if (!normalized || isMaskedSecretPlaceholder(normalized)) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function isMaskedSecretPlaceholder(value: string): boolean {
+  return Array.from(value).every((character) => {
+    const code = character.charCodeAt(0);
+    return character === "*" || character === "." || code === 0x2022;
+  });
 }
 
 function buildGeminiGenerationConfig(model: string, maxOutputTokens: number): GeminiGenerationConfig {

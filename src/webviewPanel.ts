@@ -251,10 +251,14 @@ export class ExplanationPanel {
       }
 
       .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
         gap: 10px;
+      }
+
+      .heading {
+        min-width: 0;
       }
 
       .title {
@@ -291,12 +295,45 @@ export class ExplanationPanel {
         font-family: var(--vscode-font-family);
         font-size: 11.5px;
         font-weight: 700;
+        transition:
+          background-color 120ms ease,
+          border-color 120ms ease,
+          color 120ms ease,
+          transform 80ms ease,
+          box-shadow 120ms ease;
+      }
+
+      button:hover {
+        background: color-mix(in srgb, var(--vscode-button-background) 82%, white);
+        box-shadow: 0 6px 16px color-mix(in srgb, #000 20%, transparent);
+      }
+
+      button:active,
+      button.isPressed {
+        background: color-mix(in srgb, var(--vscode-button-background) 72%, black);
+        transform: translateY(1px);
+        box-shadow: inset 0 0 0 999px color-mix(in srgb, #000 10%, transparent);
+      }
+
+      button:focus-visible {
+        outline: 2px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
       }
 
       button.secondary {
         background: var(--vscode-button-secondaryBackground);
         color: var(--vscode-button-secondaryForeground);
         border-color: var(--vscode-panel-border);
+      }
+
+      button.secondary:hover {
+        background: color-mix(in srgb, var(--vscode-button-secondaryBackground) 82%, white);
+        border-color: var(--vscode-focusBorder);
+      }
+
+      button.secondary:active,
+      button.secondary.isPressed {
+        background: color-mix(in srgb, var(--vscode-button-secondaryBackground) 72%, black);
       }
 
       .metaRow {
@@ -448,10 +485,8 @@ export class ExplanationPanel {
       }
 
       .settingsFab {
-        position: fixed;
-        right: 16px;
-        top: 16px;
-        z-index: 10;
+        justify-self: end;
+        align-self: start;
         border-radius: 999px;
         box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent);
       }
@@ -506,7 +541,8 @@ export class ExplanationPanel {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 14px;
+        margin-top: 12px;
+        margin-bottom: 14px;
       }
 
       .providerNote {
@@ -554,6 +590,14 @@ export class ExplanationPanel {
       }
 
       @media (max-width: 720px) {
+        .header {
+          grid-template-columns: 1fr;
+        }
+
+        .settingsFab {
+          justify-self: start;
+        }
+
         .sectionSummary,
         .sectionDetails,
         .sectionTakeaway {
@@ -574,8 +618,11 @@ export class ExplanationPanel {
     <div class="layout">
       <section class="hero ${input.loading ? "loadingPulse" : ""}">
         <div class="header">
-          <div class="title">${escapeHtml(input.title)}</div>
-          ${subtitle}
+          <div class="heading">
+            <div class="title">${escapeHtml(input.title)}</div>
+            ${subtitle}
+          </div>
+          <button class="settingsFab" data-action="settings" title="${escapeHtml(text.settings)}" aria-label="${escapeHtml(text.settings)}">${escapeHtml(text.settingsButton)}</button>
         </div>
         <div class="actions">
           <button data-action="moreSimple">${escapeHtml(text.moreSimple)}</button>
@@ -585,32 +632,31 @@ export class ExplanationPanel {
       </section>
       ${bodyContent}
     </div>
-    <button class="settingsFab" data-action="settings" title="${escapeHtml(text.settings)}" aria-label="${escapeHtml(text.settings)}">${escapeHtml(text.settingsButton)}</button>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const defaultModels = {
-        lite: "free-lite",
         ollama: "qwen2.5-coder",
-        openai: "gpt-5",
+        openai: "gpt-5-nano",
         gemini: "gemini-2.5-flash",
         anthropic: "claude-sonnet-4-5"
       };
       const collectSettings = () => {
         const apiKeyInput = document.querySelector("#apiKey");
-        const isPlaceholder = apiKeyInput && apiKeyInput.getAttribute("data-key-saved") === "true" && apiKeyInput.value === "••••••••";
         return {
           provider: document.querySelector("#provider")?.value,
           model: document.querySelector("#model")?.value,
           ollamaUrl: document.querySelector("#ollamaUrl")?.value,
           openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
           anthropicBaseUrl: document.querySelector("#anthropicBaseUrl")?.value,
-          apiKey: isPlaceholder ? "" : (apiKeyInput?.value ?? ""),
+          apiKey: apiKeyInput?.value ?? "",
           clearApiKey: document.querySelector("#clearApiKey")?.checked
         };
       };
       const actions = document.querySelectorAll("[data-action]");
       for (const button of actions) {
         button.addEventListener("click", () => {
+          button.classList.add("isPressed");
+          setTimeout(() => button.classList.remove("isPressed"), 180);
           const action = button.getAttribute("data-action");
 
           if (action === "saveSettings" || action === "checkSettingsConnection") {
@@ -630,13 +676,9 @@ export class ExplanationPanel {
       const clearApiKey = document.querySelector("#clearApiKey");
       let previousProvider = provider?.value;
       const refreshProviderFields = () => {
-        const isLite = provider?.value === "lite";
-        const needsApiKey = provider?.value !== "lite" && provider?.value !== "ollama";
+        const needsApiKey = provider?.value !== "ollama";
         if (model) {
-          model.disabled = isLite;
-          if (isLite) {
-            model.value = defaultModels.lite;
-          }
+          model.disabled = false;
         }
         if (apiKey) {
           apiKey.disabled = !needsApiKey;
@@ -652,7 +694,7 @@ export class ExplanationPanel {
         }
       };
       provider?.addEventListener("change", () => {
-        if (model && (!model.value.trim() || previousProvider === "lite")) {
+        if (model && !model.value.trim()) {
           model.value = defaultModels[provider.value] || "";
         }
         previousProvider = provider.value;
@@ -666,8 +708,7 @@ export class ExplanationPanel {
 }
 
 function renderSettingsView(settings: SettingsViewModel, text: Record<string, string>): string {
-  const isLite = settings.provider === "lite";
-  const requiresApiKey = settings.provider !== "lite" && settings.provider !== "ollama";
+  const requiresApiKey = settings.provider !== "ollama";
   const keyStatus = !requiresApiKey ? text.apiKeyNotNeeded : settings.hasApiKey ? text.apiKeyStored : text.apiKeyMissing;
   const statusClass =
     settings.providerStatus.kind === "success"
@@ -681,7 +722,6 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       <div class="field">
         <label for="provider">${escapeHtml(text.provider)}</label>
         <select id="provider">
-          ${renderProviderOption("lite", "Free Lite (no AI)", settings.provider)}
           ${renderProviderOption("ollama", "Ollama local", settings.provider)}
           ${renderProviderOption("openai", "OpenAI / Codex", settings.provider)}
           ${renderProviderOption("gemini", "Gemini", settings.provider)}
@@ -690,7 +730,7 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       </div>
       <div class="field">
         <label for="model">${escapeHtml(text.model)}</label>
-        <input id="model" value="${escapeHtml(settings.model)}" placeholder="qwen2.5-coder" ${isLite ? "disabled" : ""} />
+        <input id="model" value="${escapeHtml(settings.model)}" placeholder="gpt-5-nano" />
       </div>
       <div class="field fieldWide">
         <label for="ollamaUrl">${escapeHtml(text.ollamaUrl)}</label>
@@ -706,7 +746,7 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       </div>
       <div class="field fieldWide">
         <label for="apiKey">${escapeHtml(text.apiKey)} - ${escapeHtml(keyStatus)}</label>
-        <input id="apiKey" type="password" value="${escapeHtml(requiresApiKey && settings.hasApiKey && !settings.apiKey ? "••••••••" : (settings.apiKey ?? ""))}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" data-key-saved="${requiresApiKey && settings.hasApiKey ? "true" : "false"}" ${requiresApiKey ? "" : "disabled"} />
+        <input id="apiKey" type="password" value="${escapeHtml(settings.apiKey ?? "")}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" data-key-saved="${requiresApiKey && settings.hasApiKey ? "true" : "false"}" ${requiresApiKey ? "" : "disabled"} />
       </div>
       <div class="field fieldWide">
         <label>
@@ -714,6 +754,10 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
           ${escapeHtml(text.clearApiKey)}
         </label>
       </div>
+    </div>
+    <div class="settingsActions">
+      <button data-action="saveSettings">${escapeHtml(text.saveSettings)}</button>
+      <button class="secondary" data-action="cancelSettings">${escapeHtml(text.cancelSettings)}</button>
     </div>
     <div class="statusRow">
       <div>
@@ -724,10 +768,6 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
     </div>
     <div class="providerNote">${escapeHtml(text.cloudPrivacyNote)}</div>
     <div class="providerNote">${escapeHtml(text.apiKeySecurityNote)}</div>
-    <div class="settingsActions">
-      <button data-action="saveSettings">${escapeHtml(text.saveSettings)}</button>
-      <button class="secondary" data-action="cancelSettings">${escapeHtml(text.cancelSettings)}</button>
-    </div>
   </section>`;
 }
 
@@ -826,12 +866,12 @@ function getFrenchUiText(): Record<string, string> {
     error: "Erreur",
     emptySummary: "Selectionne du code ou pose ton curseur sur une ligne pour obtenir une explication immediate.",
     emptyDetails:
-      "Tu peux lancer l'explication depuis le clic droit, la palette de commandes, ou le bouton dans la barre de statut. Free Lite fonctionne tout de suite sans envoyer le code nulle part ; Ollama et le cloud restent optionnels.",
+      "Tu peux lancer l'explication depuis le clic droit, la palette de commandes, ou le bouton dans la barre de statut. Choisis OpenAI/Codex, Claude, Gemini ou Ollama dans les parametres.",
     emptyTakeaway: "Le but est simple : comprendre un bout de code sans casser ton flux de lecture.",
     loadingSummary: "Je lis le code selectionne.",
     loadingTakeaway: "Garde le contexte ouvert, la reponse arrive ici.",
     errorSummary: "Je n'ai pas pu generer l'explication.",
-    errorTakeaway: "Tu peux reessayer, utiliser Free Lite, ou verifier la connexion du fournisseur configure.",
+    errorTakeaway: "Tu peux reessayer ou verifier la connexion du fournisseur configure.",
     moreSimple: "Plus simple",
     moreDetailed: "Plus detaille",
     retry: "Reessayer",
@@ -845,16 +885,17 @@ function getFrenchUiText(): Record<string, string> {
     model: "Modele",
     ollamaUrl: "URL Ollama",
     openAiBaseUrl: "URL de base compatible OpenAI",
+    anthropicBaseUrl: "URL de base compatible Anthropic",
     apiKey: "Cle API",
     apiKeyPlaceholder: "Laisse vide pour garder la cle enregistree",
-    apiKeyNotNeeded: "inutile avec Free Lite ou Ollama",
+    apiKeyNotNeeded: "inutile avec Ollama",
     apiKeyStored: "cle deja enregistree",
     apiKeyMissing: "aucune cle enregistree",
     clearApiKey: "Supprimer la cle API enregistree pour ce fournisseur",
     connectionStatus: "Etat de la connexion",
     checkConnection: "Verifier la connexion",
     cloudPrivacyNote:
-      "Free Lite n'envoie le code nulle part. Ollama garde les requetes en local. Les fournisseurs cloud recoivent le code que tu demandes a XPlanator d'expliquer.",
+      "Ollama garde les requetes en local. Les fournisseurs cloud recoivent le code que tu demandes a XPlanator d'expliquer.",
     apiKeySecurityNote:
       "Les cles API ne sont jamais reaffichees apres l'enregistrement et sont stockees avec le SecretStorage de VS Code.",
     saveSettings: "Enregistrer",
@@ -879,12 +920,12 @@ function getUiText(language: UiLanguage): Record<string, string> {
       error: "Error",
       emptySummary: "Select code or place your cursor on a line to get an immediate explanation.",
       emptyDetails:
-        "You can launch an explanation from the context menu, the command palette, or the status bar button. Free Lite works instantly without sending code anywhere; Ollama and cloud providers are optional upgrades.",
+        "You can launch an explanation from the context menu, the command palette, or the status bar button. Choose OpenAI/Codex, Claude, Gemini, or Ollama in settings.",
       emptyTakeaway: "The goal is simple: understand a piece of code without breaking your reading flow.",
       loadingSummary: "Reading the selected code.",
       loadingTakeaway: "Keep the file context open. The answer will appear here.",
       errorSummary: "I could not generate the explanation.",
-      errorTakeaway: "You can retry, use Free Lite, or check the configured provider connection.",
+      errorTakeaway: "You can retry or check the configured provider connection.",
       moreSimple: "Simpler",
       moreDetailed: "More detail",
       retry: "Retry",
@@ -901,13 +942,13 @@ function getUiText(language: UiLanguage): Record<string, string> {
       anthropicBaseUrl: "Anthropic-compatible base URL",
       apiKey: "API key",
       apiKeyPlaceholder: "Leave empty to keep the saved key",
-      apiKeyNotNeeded: "not needed for Free Lite or Ollama",
+      apiKeyNotNeeded: "not needed for Ollama",
       apiKeyStored: "key already saved",
       apiKeyMissing: "no key saved",
       clearApiKey: "Delete the saved API key for this provider",
       connectionStatus: "Connection status",
       checkConnection: "Check connection",
-      cloudPrivacyNote: "Free Lite sends code nowhere. Ollama keeps requests local. Cloud providers receive the code you ask XPlanator to explain.",
+      cloudPrivacyNote: "Ollama keeps requests local. Cloud providers receive the code you ask XPlanator to explain.",
       apiKeySecurityNote: "API keys are never displayed again after saving and are stored with VS Code SecretStorage.",
       saveSettings: "Save",
       cancelSettings: "Cancel",
@@ -918,53 +959,5 @@ function getUiText(language: UiLanguage): Record<string, string> {
     };
   }
 
-<<<<<<< Updated upstream
-  return {
-    appName: "XPlanator",
-    ready: "Prêt",
-    analyzing: "Analyse en cours",
-    error: "Erreur",
-    emptySummary: "Sélectionne du code ou pose ton curseur sur une ligne pour obtenir une explication immédiate.",
-    emptyDetails:
-      "Tu peux lancer l'explication depuis le clic droit, la palette de commandes, ou le bouton dans la barre de statut. L'extension reste locale et envoie le code uniquement à Ollama sur ta machine.",
-    emptyTakeaway: "Le but est simple : comprendre un bout de code sans casser ton flux de lecture.",
-    loadingSummary: "Je lis le code sélectionné.",
-    loadingTakeaway: "Garde le contexte ouvert, la réponse arrive ici.",
-    errorSummary: "Je n'ai pas pu générer l'explication.",
-    errorTakeaway: "Tu peux réessayer ou vérifier la connexion Ollama.",
-    moreSimple: "Plus simple",
-    moreDetailed: "Plus détaillé",
-    retry: "Réessayer",
-    settings: "Paramètres",
-    settingsButton: "Paramètres",
-    generalIdea: "Idée générale",
-    details: "Détails",
-    takeaway: "À retenir",
-    hint: "Astuce : sélectionne juste la partie qui te bloque pour obtenir une explication plus nette.",
-    provider: "Fournisseur",
-    model: "Modèle",
-    ollamaUrl: "URL Ollama",
-    openAiBaseUrl: "URL de base compatible OpenAI",
-    anthropicBaseUrl: "URL de base compatible Anthropic",
-    apiKey: "Clé API",
-    apiKeyPlaceholder: "Laisse vide pour garder la clé enregistrée",
-    apiKeyNotNeeded: "inutile avec Ollama",
-    apiKeyStored: "clé déjà enregistrée",
-    apiKeyMissing: "aucune clé enregistrée",
-    clearApiKey: "Supprimer la clé API enregistrée pour ce fournisseur",
-    connectionStatus: "Etat de la connexion",
-    checkConnection: "Verifier la connexion",
-    cloudPrivacyNote:
-      "Les fournisseurs cloud reçoivent le code que tu demandes à XPlanator d'expliquer. Utilise Ollama si tu veux tout garder en local.",
-    apiKeySecurityNote: "Les clés API ne sont jamais réaffichées après l'enregistrement et sont stockées avec le SecretStorage de VS Code.",
-    saveSettings: "Enregistrer",
-    cancelSettings: "Annuler",
-    noDistinctSummary: "Le modèle n'a pas fourni de résumé distinct.",
-    defaultTakeaway: "L'idée principale est déjà dans les détails ci-dessus.",
-    explanationAvailableBelow: "Explication disponible ci-dessous.",
-    reviewTakeaway: "Relis surtout le bloc cible et les détails pour confirmer ton intuition."
-  };
-=======
   return getFrenchUiText();
->>>>>>> Stashed changes
 }
