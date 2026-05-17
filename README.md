@@ -20,7 +20,7 @@ Understand this piece of code, right here, without leaving VS Code.
 - Explains a selection or the current cursor context
 - Opens from the editor title bar without starting an explanation
 - Lets users tick the sections they want directly in the panel to reduce output tokens
-- `Plus simple` and `Plus detaille` follow-up buttons
+- `Plus simple` and `Plus detaillé` follow-up buttons
 - Separate sections for summary, details, and takeaway
 - Copy buttons for each section
 - Settings button inside the explanation panel
