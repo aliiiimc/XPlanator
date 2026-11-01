@@ -79,6 +79,27 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
+    if (action === "listModels" && message.settings) {
+      const settings = message.settings;
+      const preview = buildConfigFromSettings(settings);
+      try {
+        const current = getConfig();
+        const changed = preview.provider === "openai" && hasEndpointChanged(current.openAiBaseUrl, preview.openAiBaseUrl)
+          ? [localize(preview.language, "openAiEndpointLabel")]
+          : preview.provider === "anthropic" && hasEndpointChanged(current.anthropicBaseUrl, preview.anthropicBaseUrl)
+            ? [localize(preview.language, "anthropicEndpointLabel")] : [];
+        if (changed.length && !(await confirmEndpointSettingsChange(preview.language, changed))) {
+          panel.sendModels(message.requestId, [], localize(preview.language, "settingsChangeCanceled"));
+          return;
+        }
+        const models = await aiClient.listModels(preview, settings.apiKey);
+        panel.sendModels(message.requestId, models);
+      } catch (error) {
+        panel.sendModels(message.requestId, [], error instanceof Error ? error.message : "Error");
+      }
+      return;
+    }
+
     if (action === "checkSettingsConnection") {
       await checkSettingsConnection(panel, aiClient, message.settings);
       return;
@@ -220,6 +241,8 @@ async function explainFromContext(
   aiClient: AiClient
 ): Promise<void> {
   const config = getConfig();
+  lastAttemptContext = codeContext;
+  lastAttemptMode = mode;
 
   if (config.provider !== "ollama" && !(await aiClient.hasApiKey(config.provider))) {
     const message = localize(config.language, "missingProviderKeyDetails", getProviderLabel(config.provider));
@@ -238,8 +261,6 @@ async function explainFromContext(
     mode
   );
 
-  lastAttemptContext = codeContext;
-  lastAttemptMode = mode;
   panel.showLoading(localize(config.language, "loadingWithProvider"), config.language, config.explanationSections);
 
   try {
@@ -485,6 +506,7 @@ function getConfig(): ExtensionConfig {
 function normalizeProvider(value: string): ModelProvider {
   switch (value) {
     case "openai":
+    case "meta":
     case "gemini":
     case "anthropic":
     case "ollama":
@@ -502,6 +524,8 @@ function normalizeModel(value: string | undefined, provider: ModelProvider): str
   }
 
   switch (provider) {
+    case "meta":
+      return "muse-spark-1.3";
     case "openai":
       return "gpt-5-nano";
     case "gemini":

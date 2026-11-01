@@ -73,6 +73,7 @@ export class AiClient {
 
   async generate(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
     switch (config.provider) {
+      case "meta":
       case "openai":
         return this.generateWithOpenAi(config, request, apiKeyOverride);
       case "gemini":
@@ -123,6 +124,47 @@ export class AiClient {
       connected: true,
       models: [response.displayName, response.name, config.model].filter((model): model is string => Boolean(model))
     };
+  }
+
+  async listModels(config: ExtensionConfig, apiKeyOverride?: string): Promise<string[]> {
+    if (config.provider === "ollama") {
+      return (await this.checkOllamaConnection(config)).models;
+    }
+    const key = await this.requireApiKey(config.provider, config.language, apiKeyOverride);
+    const headers: Record<string, string> = config.provider === "gemini"
+      ? { "x-goog-api-key": key }
+      : config.provider === "anthropic"
+        ? { "x-api-key": key, "anthropic-version": "2023-06-01" }
+        : { Authorization: `Bearer ${key}` };
+    const base = config.provider === "gemini" ? "https://generativelanguage.googleapis.com/v1beta/models"
+      : buildVersionedProviderUrl(config.provider === "meta" ? "https://api.meta.ai/v1" : config.provider === "anthropic" ? config.anthropicBaseUrl : config.openAiBaseUrl, "models", config.language);
+    const models: string[] = [];
+    let cursor = "";
+    const seen = new Set<string>();
+    for (let page = 0; page < 100; page++) {
+      const url = new URL(base);
+      if (cursor) url.searchParams.set(config.provider === "gemini" ? "pageToken" : "after_id", cursor);
+      if (config.provider === "anthropic") url.searchParams.set("limit", "100");
+      const result = await this.requestJson<{
+        data?: Array<{ id?: string }>;
+        models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+        nextPageToken?: string; has_more?: boolean; last_id?: string;
+      }>(url.toString(), config.timeoutSeconds, config.language, { method: "GET", headers });
+      if (config.provider === "gemini") {
+        for (const model of result.models ?? []) {
+          if (model.supportedGenerationMethods?.includes("generateContent") && model.name) models.push(model.name.replace(/^models\//, ""));
+        }
+      } else {
+        for (const model of result.data ?? []) if (model.id) models.push(model.id);
+      }
+      const next = config.provider === "gemini" ? result.nextPageToken : config.provider === "anthropic" && result.has_more ? result.last_id : undefined;
+      if (!next) break;
+      if (seen.has(next)) throw new Error("Invalid model catalog pagination");
+      seen.add(next);
+      cursor = next;
+      if (page === 99) throw new Error("Model catalog pagination limit reached");
+    }
+    return [...new Set(models)].sort((a, b) => a.localeCompare(b));
   }
 
   async hasApiKey(provider: ModelProvider): Promise<boolean> {
@@ -203,10 +245,10 @@ export class AiClient {
   }
 
   private async generateWithOpenAi(config: ExtensionConfig, request: ProviderRequest, apiKeyOverride?: string): Promise<string> {
-    validateFreeModelRequestedModel(config);
-    const apiKey = await this.requireApiKey("openai", config.language, apiKeyOverride);
+    if (config.provider === "openai") validateFreeModelRequestedModel(config);
+    const apiKey = await this.requireApiKey(config.provider, config.language, apiKeyOverride);
     const response = await this.requestJson<OpenAiChatCompletionsResponse>(
-      buildVersionedProviderUrl(config.openAiBaseUrl, "chat/completions", config.language),
+      buildVersionedProviderUrl(config.provider === "meta" ? "https://api.meta.ai/v1" : config.openAiBaseUrl, "chat/completions", config.language),
       config.timeoutSeconds,
       config.language,
       {
@@ -217,11 +259,11 @@ export class AiClient {
         body: JSON.stringify(buildOpenAiChatRequestBody(config, request))
       }
     );
-    validateOpenAiRoutedModel(config, response);
+    if (config.provider === "openai") validateOpenAiRoutedModel(config, response);
     const output = extractOpenAiChatOutput(response);
 
     if (!output?.trim()) {
-      throw new Error(localizeAiError(config.language, "empty_response", getProviderLabel("openai")));
+      throw new Error(localizeAiError(config.language, "empty_response", getProviderLabel(config.provider)));
     }
 
     return output.trim();
@@ -372,6 +414,7 @@ function buildVersionedProviderUrl(baseUrl: string, route: string, language: UiL
 }
 
 function buildOpenAiChatRequestBody(config: ExtensionConfig, request: ProviderRequest): Record<string, unknown> {
+  const supportsCustomTemperature = !isGpt5Model(config.model);
   const body: Record<string, unknown> = {
     model: config.model,
     messages: [
@@ -380,11 +423,10 @@ function buildOpenAiChatRequestBody(config: ExtensionConfig, request: ProviderRe
         content: request.prompt
       }
     ],
-    temperature: 0.2,
-    max_tokens: request.maxTokens
+    ...(supportsCustomTemperature ? { temperature: 0.2, max_tokens: request.maxTokens } : { max_completion_tokens: request.maxTokens })
   };
 
-  if (isFreeModelEndpoint(config.openAiBaseUrl)) {
+  if (config.provider === "openai" && isFreeModelEndpoint(config.openAiBaseUrl)) {
     body.models = [config.model];
     body.provider = {
       allow_fallbacks: false
@@ -392,6 +434,10 @@ function buildOpenAiChatRequestBody(config: ExtensionConfig, request: ProviderRe
   }
 
   return body;
+}
+
+function isGpt5Model(model: string): boolean {
+  return /^gpt-5(?:[.-]|$)/i.test(model.trim());
 }
 
 function validateFreeModelRequestedModel(config: ExtensionConfig): void {

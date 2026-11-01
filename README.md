@@ -1,19 +1,29 @@
 # XPlanator
 
-XPlanator is a VS Code extension for understanding code, not blindly generating more of it.
+XPlanator is a VS Code extension that explains selected code directly inside the editor.
 
-It explains the selected code or the symbol under your cursor in a clear side panel, with a short summary, deeper details, and one compact takeaway. It supports OpenAI/Codex, Gemini, Claude, and local Ollama.
+It is built for developers who want a focused explanation of the code in front of them: what it does, how it works, and what to remember before changing it. It supports OpenAI-compatible APIs, Meta Muse, Gemini, Claude, and local Ollama.
 
-## Why This Exists
+## Features
 
-AI makes it easy to create code you do not fully understand. XPlanator helps beginners, students, indie hackers, and AI-assisted developers slow down for a moment and actually understand what a snippet does.
+- Explain a selected block of code from the editor context menu
+- Explain the current line, symbol, function, or class under the cursor
+- Open a dedicated explanation panel from the editor title bar
+- Choose the generated sections: summary, details, and takeaway
+- Request a simpler or more detailed follow-up explanation
+- Copy individual explanation sections
+- Use OpenAI-compatible APIs, Gemini, Claude, or local Ollama
+- Store API keys with VS Code SecretStorage
+- Configure model, language, timeout, and context limits
+- Optionally include nearby file context and related workspace snippets
 
-The goal is not to replace Copilot, Cursor, Continue, Codex, or Claude Code. The goal is smaller and sharper:
+## Why Use It
 
-Understand this piece of code, right here, without leaving VS Code.
+XPlanator is not a code generator. It is a reading and review tool.
 
-## Highlights
+Use it when you are onboarding to a codebase, reviewing AI-generated code, learning a new language or framework, or trying to understand a local implementation before editing it. The extension keeps the workflow inside VS Code and limits the request to the code context you choose.
 
+<<<<<<< Updated upstream
 - Local Ollama support when you want model-based explanations on your machine
 - BYOK cloud mode for OpenAI/Codex, Gemini, and Claude
 - No XPlanator backend
@@ -26,136 +36,121 @@ Understand this piece of code, right here, without leaving VS Code.
 - Settings button inside the explanation panel
 - French and English UI/answers
 - Beginner-friendly prompt style
+=======
+## Privacy And Provider Model
+>>>>>>> Stashed changes
 
-## Privacy Model
+XPlanator does not run a hosted backend.
 
-If you choose Ollama, requests are sent to your local Ollama server, usually `http://localhost:11434`.
+When using Ollama, requests are sent to your configured local Ollama endpoint, usually `http://localhost:11434`.
 
-If you choose a cloud provider in `Parametres`, the code you ask XPlanator to explain is sent directly to that provider using your own API key. By default, new installs start on OpenAI/Codex. API keys are stored with VS Code SecretStorage, not in this repository or in plain text configuration files.
+When using a cloud provider, the selected code and configured context are sent directly from VS Code to that provider using your own API key. API keys are stored through VS Code SecretStorage and are not written to `settings.json`.
 
-Security details:
+Security behavior:
 
-- API keys are never written to `settings.json`
-- API keys are never displayed again after saving
-- API keys are never logged by XPlanator
+- API keys are not stored in plain text settings
+- API keys are not logged by the extension
 - Saved API keys can be deleted from the settings panel
-- XPlanator has no hosted backend and does not proxy provider requests
+- XPlanator does not proxy requests through a third-party service
 
-Read [SECURITY_MODEL.md](./SECURITY_MODEL.md) for the full security model and verification notes.
+See [SECURITY_MODEL.md](./SECURITY_MODEL.md) for implementation details.
 
-## Who It Is For
-
-- Beginners reading unfamiliar code
-- Students learning JavaScript, TypeScript, Python, or other languages
-- Developers reviewing AI-generated code
-- Indie hackers who want to understand before shipping
-- Teams that want a local-first explanation tool for onboarding
-
-## Current Features
-
-- Explain selected code
-- Explain the current line or symbol under the cursor
-- Ask for a simpler explanation
-- Ask for a more detailed explanation
-- Keep extra detail in `Details`, while `A retenir` stays short
-- Choose the explanation provider from the panel
-- Configure the model name for AI providers
-- Save personal API keys securely through VS Code SecretStorage
-- Check the configured AI provider connection
-- Include nearby file context and related workspace snippets when available
-
-## Providers
+## Supported Providers
 
 | Provider | Default model | Notes |
 | --- | --- | --- |
-| Ollama | `qwen2.5-coder` | Local AI, no API key |
-| OpenAI / Codex | `gpt-5-nano` | Default, requires API key |
-| Gemini | `gemini-2.5-flash` | Requires API key |
-| Claude | `claude-sonnet-4-5` | Requires API key |
+| OpenAI / Codex | `gpt-5-nano` | Default provider, requires an API key |
+| Meta Muse | `muse-spark-1.3` | Requires a Meta Model API key |
+| Ollama | `qwen2.5-coder` | Local provider, no API key required |
+| Gemini | `gemini-2.5-flash` | Requires an API key |
+| Claude | `claude-sonnet-4-5` | Requires an API key |
 
-Model names are editable. If a provider changes its model names, update the model field in `Parametres`.
+Model names are editable from the settings panel. If a provider changes model names, update the configured model value.
 
-## Local Development
+## Installation
 
-### Requirements
+Install XPlanator from the VS Code Marketplace, then reload VS Code if requested.
 
-- Node.js 18+
-- VS Code
-- Ollama, if you want local model-based inference
-
-### Install
+For local development:
 
 ```bash
 npm install
 npm run compile
 ```
 
-For the default Ollama model:
+To use the default Ollama model locally:
 
 ```bash
 ollama pull qwen2.5-coder
 ```
 
-### Run In VS Code
-
-1. Open this folder in VS Code.
-2. Press `F5`.
-3. VS Code opens an `Extension Development Host` window.
-4. Open a code file.
-5. Select code and run `Explain Code: Explain Selection`.
-
 ## Usage
 
 ### Explain A Selection
 
-1. Select a snippet.
-2. Right click.
-3. Choose `Explain Code: Explain Selection`.
+1. Select code in the editor.
+2. Right-click the selection.
+3. Run `Explain Code: Explain Selection`.
 
-### Open The Panel
+You can also use the default keybinding:
 
-Click the XPlanator icon in the editor title bar to open the side panel without starting an explanation.
+```text
+Ctrl+Alt+E
+```
 
-### Choose Explanation Sections
+On macOS:
 
-In the main panel, tick `Idee generale`, `Details`, and/or `A retenir` directly on the section cards before launching an explanation. XPlanator asks the model only for the selected sections.
+```text
+Cmd+Alt+E
+```
 
 ### Explain At Cursor
 
-1. Put the cursor on a line, variable, function, or class.
+1. Place the cursor on a line, variable, function, or class.
 2. Open the Command Palette.
 3. Run `Explain Code: Explain At Cursor`.
 
-### Change Provider Or Model
+### Open The Panel
 
-1. Open an explanation panel.
-2. Click `Parametres` in the panel.
-3. Choose `Ollama local`, `OpenAI / Codex`, `Gemini`, or `Claude`.
-4. Enter the model name.
+Click the XPlanator icon in the editor title bar, or run:
+
+```text
+XPlanator: Open Panel
+```
+
+### Configure A Provider
+
+1. Open the XPlanator panel.
+2. Click `Parametres`.
+3. Choose `Ollama local`, `OpenAI / Codex`, `Gemini`, `Claude`, or `Meta Muse`.
+4. Click `Charger les modèles disponibles` and choose a model, or enter its name manually. The list may include models that are not compatible with text explanations or not enabled for your account.
 5. For cloud providers, paste your API key.
-6. Use `Check connection` if you want to verify the current provider from the settings panel.
+6. Optionally run `Check connection`.
 7. Click `Enregistrer`.
 
-## VS Code Settings
+## Settings
 
-- `explainCode.provider`: `ollama`, `openai`, `gemini`, or `anthropic`
+XPlanator exposes the following VS Code settings:
+
+- `explainCode.provider`: `ollama`, `openai`, `gemini`, `anthropic`, or `meta`
 - `explainCode.ollamaUrl`: local Ollama URL, default `http://localhost:11434`
 - `explainCode.openAiBaseUrl`: OpenAI-compatible base URL, default `https://api.openai.com/v1`
 - `explainCode.anthropicBaseUrl`: Anthropic-compatible Messages API base URL, default `https://api.anthropic.com/v1`
-- `explainCode.model`: model name
+- `explainCode.model`: model used for explanations
 - `explainCode.explanationSections`: generated sections, any combination of `summary`, `details`, and `takeaway`
 - `explainCode.responseStyle`: `simple`, `technical`, or `beginner`
 - `explainCode.language`: `fr` or `en`
-- `explainCode.timeoutSeconds`: AI provider request timeout (applies to all providers)
-- `explainCode.includeRelatedContext`: include related snippets when available
-- `explainCode.maxRelatedSnippets`: maximum related snippets
+- `explainCode.timeoutSeconds`: provider request timeout
+- `explainCode.includeRelatedContext`: include related workspace snippets when available
+- `explainCode.maxRelatedSnippets`: maximum number of related snippets
 - `explainCode.maxRelatedLinesPerSnippet`: maximum lines per related snippet
-- `explainCode.maxContextCharacters`: context character budget
+- `explainCode.maxContextCharacters`: total context character budget
 
-Non-local provider URLs must use `https`. Local Ollama-style endpoints such as `localhost` and `127.0.0.1` may still use `http`.
+Non-local provider URLs must use `https`. Local endpoints such as `localhost` and `127.0.0.1` may use `http`.
 
 ## Commands
 
+- `XPlanator: Open Panel`
 - `Explain Code: Explain Selection`
 - `Explain Code: Explain At Cursor`
 - `Explain Code: Explain More Simply`
@@ -163,27 +158,46 @@ Non-local provider URLs must use `https`. Local Ollama-style endpoints such as `
 - `Explain Code: Open Settings`
 - `Explain Code: Check AI Provider Connection`
 
+## Development
+
+Run the extension locally:
+
+1. Open this repository in VS Code.
+2. Run `npm install`.
+3. Run `npm run compile`.
+4. Press `F5`.
+5. Use the Extension Development Host window to test commands.
+
+Run tests:
+
+```bash
+npm test
+```
+
+Package the extension:
+
+```bash
+vsce package
+```
+
 ## Roadmap
 
-- GIF/demo assets for the Marketplace and GitHub README
+- Marketplace demo assets
 - Project-level explanation mode
 - Dependency and call-flow view
 - Learning mode with quiz questions
 - Explanation history
 - Markdown export
-- Cost/token display for cloud providers
+- Cost and token usage display for cloud providers
 - Open VSX publishing
-- VS Code Marketplace publishing
 
-See [ROADMAP.md](./ROADMAP.md) for a more detailed version.
+See [ROADMAP.md](./ROADMAP.md) for more details.
 
 ## Contributing
 
-Contributions are welcome. Good first contributions include prompt improvements, provider fixes, UI polish, documentation, and tests around section parsing.
+Contributions are welcome. Useful areas include provider compatibility, prompt quality, UI polish, documentation, and tests around explanation parsing.
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
-
-Packaging notes for VS Code Marketplace and Open VSX live in [PACKAGING.md](./PACKAGING.md).
 
 ## Security
 

@@ -11,12 +11,14 @@ type PanelAction =
   | "saveSettings"
   | "cancelSettings"
   | "checkSettingsConnection"
+  | "listModels"
   | "setExplanationSections"
   | `copy:${SectionKey}`;
 
 export interface PanelMessage {
   action?: PanelAction;
   settings?: ModelSettingsInput;
+  requestId?: number;
   explanationSections?: ExplanationSection[];
 }
 
@@ -157,6 +159,10 @@ export class ExplanationPanel {
       explanationSections: settings.explanationSections ?? allExplanationSections
     });
     this.revealPanel(panel);
+  }
+
+  sendModels(requestId: number | undefined, models: string[], error?: string): void {
+    void this.panel?.webview.postMessage({ action: "models", requestId, models, error });
   }
 
   getLatestExplanationText(): string | undefined {
@@ -693,6 +699,7 @@ export class ExplanationPanel {
       const defaultModels = {
         ollama: "qwen2.5-coder",
         openai: "gpt-5-nano",
+        meta: "muse-spark-1.3",
         gemini: "gemini-2.5-flash",
         anthropic: "claude-sonnet-4-5"
       };
@@ -711,6 +718,41 @@ export class ExplanationPanel {
       const collectExplanationSections = () => {
         return Array.from(document.querySelectorAll("[data-explanation-section]:checked")).map((input) => input.value);
       };
+      let modelRequestId = 0;
+      const modelSelect = document.querySelector("#availableModels");
+      const modelStatus = document.querySelector("#modelStatus");
+      window.addEventListener("message", (event) => {
+        const message = event.data;
+        if (message.action !== "models" || message.requestId !== modelRequestId || !modelSelect || !modelStatus) return;
+        modelSelect.replaceChildren();
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = ${JSON.stringify(input.language === "fr" ? "Choisir un modèle" : "Choose a model")};
+        modelSelect.appendChild(placeholder);
+        for (const id of message.models) {
+          const option = document.createElement("option");
+          option.value = id; option.textContent = id; modelSelect.appendChild(option);
+        }
+        modelSelect.disabled = !message.models.length;
+        modelStatus.textContent = message.error || (message.models.length
+          ? ${JSON.stringify(input.language === "fr" ? "Choisissez un modèle dans la liste. Sa disponibilité dépend aussi de votre compte et de ses droits." : "Choose a model. Availability also depends on your account and permissions.")}
+          : ${JSON.stringify(input.language === "fr" ? "Aucun modèle trouvé. Vous pouvez saisir son nom manuellement." : "No models found. You can enter a model manually.")});
+        const button = document.querySelector('[data-action="listModels"]');
+        if (button) button.disabled = false;
+      });
+      for (const selector of ["#apiKey", "#openAiBaseUrl", "#anthropicBaseUrl", "#ollamaUrl"]) {
+        document.querySelector(selector)?.addEventListener("input", () => {
+          modelRequestId++;
+          if (modelSelect) { modelSelect.replaceChildren(); modelSelect.disabled = true; }
+          if (modelStatus) modelStatus.textContent = "";
+          const button = document.querySelector('[data-action="listModels"]');
+          if (button) button.disabled = false;
+        });
+      }
+      modelSelect?.addEventListener("change", () => {
+        const input = document.querySelector("#model");
+        if (input && modelSelect.value) input.value = modelSelect.value;
+      });
       const actions = document.querySelectorAll("[data-action]");
       for (const button of actions) {
         button.addEventListener("click", () => {
@@ -718,6 +760,13 @@ export class ExplanationPanel {
           setTimeout(() => button.classList.remove("isPressed"), 180);
           const action = button.getAttribute("data-action");
 
+          if (action === "listModels") {
+            modelRequestId++;
+            button.disabled = true;
+            if (modelStatus) modelStatus.textContent = ${JSON.stringify(input.language === "fr" ? "Chargement des modèles…" : "Loading models…")};
+            vscode.postMessage({ action, requestId: modelRequestId, settings: collectSettings() });
+            return;
+          }
           if (action === "saveSettings" || action === "checkSettingsConnection") {
             vscode.postMessage({
               action,
@@ -766,9 +815,20 @@ export class ExplanationPanel {
         }
       };
       provider?.addEventListener("change", () => {
-        if (model && !model.value.trim()) {
+        modelRequestId++;
+        if (modelSelect) { modelSelect.replaceChildren(); modelSelect.disabled = true; }
+        if (modelStatus) modelStatus.textContent = "";
+        const loadButton = document.querySelector('[data-action="listModels"]');
+        if (loadButton) loadButton.disabled = false;
+        if (model && (!model.value.trim() || model.value.trim() === defaultModels[previousProvider])) {
           model.value = defaultModels[provider.value] || "";
         }
+        if (apiKey) apiKey.value = "";
+        if (clearApiKey) clearApiKey.checked = false;
+        const keyLabel = document.querySelector("label[for=apiKey]");
+        if (keyLabel) keyLabel.textContent = ${JSON.stringify(text.apiKey)};
+        const status = document.querySelector(".statusMessage");
+        if (status) { status.textContent = ""; status.className = "statusMessage"; }
         previousProvider = provider.value;
         refreshProviderFields();
       });
@@ -796,6 +856,7 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
         <select id="provider">
           ${renderProviderOption("ollama", "Ollama local", settings.provider)}
           ${renderProviderOption("openai", "OpenAI / Codex", settings.provider)}
+          ${renderProviderOption("meta", "Meta Muse", settings.provider)}
           ${renderProviderOption("gemini", "Gemini", settings.provider)}
           ${renderProviderOption("anthropic", "Claude", settings.provider)}
         </select>
@@ -803,6 +864,9 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       <div class="field">
         <label for="model">${escapeHtml(text.model)}</label>
         <input id="model" value="${escapeHtml(settings.model)}" placeholder="gpt-5-nano" />
+        <button type="button" class="secondary" data-action="listModels">${escapeHtml(text.loadModels)}</button>
+        <select id="availableModels" disabled aria-label="${escapeHtml(text.chooseModel)}"></select>
+        <div id="modelStatus" role="status"></div>
       </div>
       <div class="field fieldWide">
         <label for="ollamaUrl">${escapeHtml(text.ollamaUrl)}</label>
@@ -975,6 +1039,8 @@ function getFrenchUiText(): Record<string, string> {
     details: "Details",
     takeaway: "A retenir",
     hint: "Astuce : selectionne juste la partie qui te bloque pour obtenir une explication plus nette.",
+    loadModels: "Charger les modèles disponibles",
+    chooseModel: "Modèles disponibles",
     provider: "Fournisseur",
     model: "Modele",
     explanationSections: "Sections a generer",
@@ -1031,6 +1097,8 @@ function getUiText(language: UiLanguage): Record<string, string> {
       details: "Details",
       takeaway: "Key takeaway",
       hint: "Tip: select only the part that blocks you to get a sharper explanation.",
+      loadModels: "Load available models",
+      chooseModel: "Available models",
       provider: "Provider",
       model: "Model",
       explanationSections: "Sections to generate",

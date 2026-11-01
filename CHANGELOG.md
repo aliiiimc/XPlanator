@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Explain complete functions, methods, and types when the cursor is on their name.
+- Use OpenAI's `max_completion_tokens` parameter for GPT-5 models and omit the unsupported custom temperature.
+- Treat source snippets as untrusted content in explanation prompts.
+- Keep the latest selection available for retry when a provider API key is missing.
+
 ## 0.1.0
 
 - Added OpenAI-compatible, Anthropic-compatible, Gemini, and local Ollama provider support.

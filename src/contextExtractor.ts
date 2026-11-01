@@ -22,12 +22,18 @@ export async function getCodeContext(
   const hasSelection = preferSelection && !selection.isEmpty;
   const wordRange = document.getWordRangeAtPosition(selection.active);
   const symbolUnderCursor = wordRange ? document.getText(wordRange) : undefined;
+  const documentSymbolRange = !hasSelection && !preferSelection
+    ? await getDocumentSymbolRange(document, selection.active)
+    : undefined;
 
   let targetRange: vscode.Range;
   let selectedCode: string;
 
   if (hasSelection) {
     targetRange = new vscode.Range(selection.start, selection.end);
+    selectedCode = document.getText(targetRange).trim();
+  } else if (documentSymbolRange) {
+    targetRange = documentSymbolRange.range;
     selectedCode = document.getText(targetRange).trim();
   } else if (wordRange) {
     targetRange = wordRange;
@@ -72,6 +78,63 @@ export async function getCodeContext(
     endLine: targetEndLine + 1,
     hasSelection
   };
+}
+
+async function getDocumentSymbolRange(
+  document: vscode.TextDocument,
+  position: vscode.Position
+): Promise<{ name: string; range: vscode.Range } | undefined> {
+  let symbols: Array<vscode.DocumentSymbol | vscode.SymbolInformation> | undefined;
+
+  try {
+    symbols = await vscode.commands.executeCommand<Array<vscode.DocumentSymbol | vscode.SymbolInformation>>(
+      "vscode.executeDocumentSymbolProvider",
+      document.uri
+    );
+  } catch {
+    return undefined;
+  }
+
+  const candidates: Array<{ name: string; range: vscode.Range; depth: number }> = [];
+  const visit = (symbol: vscode.DocumentSymbol | vscode.SymbolInformation, depth: number): void => {
+    if ("children" in symbol && "selectionRange" in symbol) {
+      if (isExplainableSymbolKind(symbol.kind) && symbol.selectionRange.contains(position)) {
+        candidates.push({ name: symbol.name, range: symbol.range, depth });
+      }
+
+      for (const child of symbol.children) {
+        visit(child, depth + 1);
+      }
+    } else if (isExplainableSymbolKind(symbol.kind) && symbol.location.range.contains(position)) {
+      candidates.push({ name: symbol.name, range: symbol.location.range, depth });
+    }
+  };
+
+  for (const symbol of symbols ?? []) {
+    visit(symbol, 0);
+  }
+
+  candidates.sort((left, right) => right.depth - left.depth || rangeLength(left.range) - rangeLength(right.range));
+  const match = candidates[0];
+  return match ? { name: match.name, range: match.range } : undefined;
+}
+
+function isExplainableSymbolKind(kind: vscode.SymbolKind): boolean {
+  return [
+    vscode.SymbolKind.Class,
+    vscode.SymbolKind.Constructor,
+    vscode.SymbolKind.Enum,
+    vscode.SymbolKind.Function,
+    vscode.SymbolKind.Interface,
+    vscode.SymbolKind.Method,
+    vscode.SymbolKind.Module,
+    vscode.SymbolKind.Struct,
+    vscode.SymbolKind.TypeParameter
+  ].includes(kind);
+}
+
+function rangeLength(range: vscode.Range): number {
+  return (range.end.line - range.start.line) * 100000 + range.end.character - range.start.character;
 }
 
 function buildNumberedSnippet(

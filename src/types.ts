@@ -1,6 +1,6 @@
 export type ExplanationMode = "quick" | "simple" | "detailed";
 
-export type ModelProvider = "ollama" | "openai" | "gemini" | "anthropic";
+export type ModelProvider = "ollama" | "openai" | "gemini" | "anthropic" | "meta";
 
 export type ResponseStyle = "simple" | "technical" | "beginner";
 
@@ -113,6 +113,8 @@ export interface LastExplanationState {
 
 export function getProviderLabel(provider: ModelProvider): string {
   switch (provider) {
+    case "meta":
+      return "Meta Muse";
     case "openai":
       return "OpenAI/Codex";
     case "gemini":
