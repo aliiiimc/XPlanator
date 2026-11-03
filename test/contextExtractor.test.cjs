@@ -21,7 +21,7 @@ test('context modes select the intended symbol, line or selection and reject ove
     fileName: '/work/demo.ts', languageId: 'typescript', uri: {}, lineCount: lines.length,
     lineAt: line => ({ text: lines[line], range: new Range(pos(line, 0), pos(line, lines[line].length)) }),
     offsetAt: p => lines.slice(0, p.line).reduce((n, value) => n + value.length + 1, 0) + p.character,
-    getText(range) { return text.slice(this.offsetAt(range.start), this.offsetAt(range.end)); },
+    getText(range) { return range ? text.slice(this.offsetAt(range.start), this.offsetAt(range.end)) : text; },
     getWordRangeAtPosition: () => new Range(pos(2, 4), pos(2, 10))
   };
   const config = { maxSurroundingLines: 20, includeRelatedContext: false, maxRelatedSnippets: 0, maxRelatedLinesPerSnippet: 28, maxContextCharacters: 4000 };
@@ -46,7 +46,7 @@ test('context modes select the intended symbol, line or selection and reject ove
     await assert.rejects(getCodeContext({ document: bigDoc, selection: { ...selection, active: pos(0, 0) } }, config, false, 'file'), /volumineux/);
     const wide = 'x'.repeat(7000);
     const wideDoc = { ...document, lineCount: 1, lineAt: () => ({ text: wide, range: new Range(pos(0, 0), pos(0, wide.length)) }),
-      offsetAt: p => p.character, getText: range => wide.slice(range.start.character, range.end.character), getWordRangeAtPosition: () => undefined };
+      offsetAt: p => p.character, getText: range => range ? wide.slice(range.start.character, range.end.character) : wide, getWordRangeAtPosition: () => undefined };
     const wideSelection = { isEmpty: false, active: pos(0, 10), start: pos(0, 0), end: pos(0, 10) };
     const bounded = await getCodeContext({ document: wideDoc, selection: wideSelection }, config, true, 'selection');
     assert.ok(bounded.selectedCode.length + bounded.surroundingCode.length <= config.maxContextCharacters);

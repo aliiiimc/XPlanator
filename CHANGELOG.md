@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Stream supported provider responses and allow cancellation; interrupted or truncated streams are reported as errors.
 - Add provider profiles with destination-scoped credentials and migration from the active legacy settings.
@@ -13,10 +13,6 @@
 - Preserve settings drafts while displaying diagnostic results.
 
 
-## Unreleased
-
-- Explain complete functions, methods, and types when the cursor is on their name.
-- Use OpenAI's `max_completion_tokens` parameter for GPT-5 models and omit the unsupported custom temperature.
 - Treat source snippets as untrusted content in explanation prompts.
 - Keep the latest selection available for retry when a provider API key is missing.
 

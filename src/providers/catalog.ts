@@ -18,7 +18,7 @@ type JsonRequest = <T>(url: string, headers: Record<string, string>) => Promise<
 function bearer(base: (config: ExtensionConfig) => string): CatalogAdapter {
   return {
     request: (config, key) => ({ url: versionedUrl(base(config), "models"), headers: { Authorization: `Bearer ${key ?? ""}` } }),
-    parse: payload => ({ models: requireArray(payload.data).flatMap(item => item.id ? [item.id] : []) })
+    parse: payload => ({ models: requireArray(payload.data).flatMap(item => typeof item?.id === "string" ? [item.id] : []) })
   };
 }
 
@@ -34,7 +34,7 @@ const adapters: Record<ModelProvider, CatalogAdapter> = {
     },
     parse: payload => {
       if (payload.has_more && !payload.last_id) throw new Error("Pagination du catalogue invalide.");
-      return { models: requireArray(payload.data).flatMap(item => item.id ? [item.id] : []), next: payload.has_more ? payload.last_id : undefined };
+      return { models: requireArray(payload.data).flatMap(item => typeof item?.id === "string" ? [item.id] : []), next: payload.has_more ? payload.last_id : undefined };
     }
   },
   gemini: {
@@ -43,11 +43,11 @@ const adapters: Record<ModelProvider, CatalogAdapter> = {
       if (cursor) url.searchParams.set("pageToken", cursor);
       return { url: url.toString(), headers: { "x-goog-api-key": key ?? "" } };
     },
-    parse: payload => ({ models: requireArray(payload.models).flatMap(item => item.name && item.supportedGenerationMethods?.includes("generateContent") ? [item.name.replace(/^models\//, "")] : []), next: payload.nextPageToken })
+    parse: payload => ({ models: requireArray(payload.models).flatMap(item => typeof item?.name === "string" && Array.isArray(item.supportedGenerationMethods) && item.supportedGenerationMethods.includes("generateContent") ? [item.name.replace(/^models\//, "")] : []), next: payload.nextPageToken })
   },
   ollama: {
     request: config => ({ url: `${config.ollamaUrl.replace(/\/$/, "")}/api/tags`, headers: {} }),
-    parse: payload => ({ models: requireArray(payload.models).flatMap(item => [item.name, item.model].filter((name): name is string => Boolean(name))) })
+    parse: payload => ({ models: requireArray(payload.models).flatMap(item => [item?.name, item?.model].filter((name): name is string => typeof name === "string" && Boolean(name))) })
   }
 };
 
@@ -66,6 +66,7 @@ export async function discoverModels(config: ExtensionConfig, key: string | unde
     const request = adapter.request(config, key, cursor);
     const result = adapter.parse(await getJson<CatalogPayload>(request.url, request.headers));
     models.push(...result.models);
+    if (models.length > 100_000) throw new Error("Catalogue de modèles trop volumineux.");
     if (!result.next) return [...new Set(models)].sort((a, b) => a.localeCompare(b));
     if (seen.has(result.next)) throw new Error("Pagination du catalogue invalide.");
     seen.add(result.next);

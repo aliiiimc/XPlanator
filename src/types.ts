@@ -76,6 +76,7 @@ export interface CodeContext {
   hasSelection: boolean;
   startCharacter?: number;
   endCharacter?: number;
+  sourceHash?: string;
 }
 
 export interface PromptInput {

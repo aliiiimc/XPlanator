@@ -47,8 +47,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   profileRepository = new ProfileRepository(context.globalState, context.secrets);
   historyRepository = new HistoryRepository(context.globalState);
   const legacy = getConfig();
+  // The published 0.1.x extension defaulted to this model without writing it
+  // to settings. Preserve that historical default only for existing installs.
+  const seenLegacySetup = context.globalState.get<boolean>("xplanator.hasSeenSetup", false);
+  const legacyKey = profileRepository.read() || legacy.provider === "ollama" ? undefined : await context.secrets.get(`xplanator.${legacy.provider}.apiKey`);
+  const legacyModel = legacy.model || (legacy.provider === "openai" && (seenLegacySetup || legacyKey) ? "gpt-5-nano" : "");
   await profileRepository.migrate({ name: getProviderLabel(legacy.provider), provider: legacy.provider,
-    endpoint: endpointFor(legacy), model: legacy.model, timeoutSeconds: legacy.timeoutSeconds });
+    endpoint: endpointFor(legacy), model: legacyModel, timeoutSeconds: legacy.timeoutSeconds });
   const panel = new ExplanationPanel(context.extensionUri, async (message: PanelMessage) => {
     const action = message.action;
 
@@ -788,7 +793,7 @@ function legacyEndpointFor(provider: ModelProvider): string {
 }
 
 async function getSourceStatus(context: CodeContext, language: UiLanguage): Promise<string | undefined> {
-  if (context.startCharacter === undefined || context.endCharacter === undefined) {
+  if (!context.sourceHash) {
     return language === "fr" ? "Version du code non vérifiable" : "Source version unavailable";
   }
   try {
@@ -799,8 +804,9 @@ async function getSourceStatus(context: CodeContext, language: UiLanguage): Prom
       if (stat.size > 1_000_000) return language === "fr" ? "Fichier trop volumineux pour comparaison" : "File too large to compare";
       document = await vscode.workspace.openTextDocument(uri);
     }
-    const range = new vscode.Range(context.startLine - 1, context.startCharacter, context.endLine - 1, context.endCharacter);
-    if (document.getText(range).trim() !== context.selectedCode) {
+    const end = document.lineAt(document.lineCount - 1).range.end;
+    if (document.offsetAt(end) > 1_000_000) return language === "fr" ? "Fichier trop volumineux pour comparaison" : "File too large to compare";
+    if (createHash("sha256").update(document.getText()).digest("hex") !== context.sourceHash) {
       return language === "fr" ? "Code modifié depuis l'explication" : "Code changed since this explanation";
     }
     return undefined;

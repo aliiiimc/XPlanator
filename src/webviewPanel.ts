@@ -729,6 +729,7 @@ export class ExplanationPanel {
       /* Follow the editor theme and give explanations a single reading column. */
       body { padding: 16px; font-size: var(--vscode-font-size); }
       .layout { max-width: 760px; gap: 14px; }
+      .layout > *, .settingsView, .field, .statusRow > * { min-width: 0; }
       .hero { border: 0; border-bottom: 1px solid var(--vscode-panel-border); border-radius: 0; padding: 0 0 12px; background: transparent; }
       .title { font-size: 16px; font-weight: 650; }
       .subtitle { font-size: 12px; text-transform: none; letter-spacing: normal; white-space: normal; font-weight: 400; }
@@ -741,10 +742,13 @@ export class ExplanationPanel {
       .metaChip { padding: 2px 0; border: 0; border-radius: 0; background: transparent; }
       .metaRow { column-gap: 14px; }
       button { border-radius: 4px; padding: 5px 9px; font-size: 12px; font-weight: 500; box-shadow: none; }
+      .settingsFab { border-radius: 4px; box-shadow: none; }
+      button { max-width: 100%; white-space: normal; }
       button:hover { background: var(--vscode-button-hoverBackground); box-shadow: none; }
       button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); box-shadow: none; }
       .actions { margin: 0; }
-      .statusRow { gap: 8px; }
+      .statusRow { gap: 8px; flex-wrap: wrap; }
+      .providerNote { overflow-wrap: anywhere; }
       .preferenceGroup { margin-top: 14px; border-top: 1px solid var(--vscode-panel-border); padding-top: 12px; }
       .preferenceGroup summary, details.field > summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
       #question { flex: 1; min-width: 0; }
@@ -1165,43 +1169,43 @@ function getSectionLabel(section: ExplanationSection, text: Record<string, strin
 function getFrenchUiText(): Record<string, string> {
   return {
     appName: "XPlanator",
-    ready: "Pret",
+    ready: "Prêt",
     analyzing: "Analyse en cours",
     error: "Erreur",
-    emptySummary: "Selectionne du code ou pose ton curseur sur une ligne pour obtenir une explication immediate.",
+    emptySummary: "Sélectionne du code ou place le curseur sur une ligne pour obtenir une explication.",
     emptyDetails:
       "Tu peux lancer l'explication depuis le clic droit, la palette de commandes, ou le bouton dans la barre de statut. Choisis OpenAI/Codex, Claude, Gemini ou Ollama dans les parametres.",
     emptyTakeaway: "Le but est simple : comprendre un bout de code sans casser ton flux de lecture.",
-    loadingSummary: "Je lis le code selectionne.",
-    loadingTakeaway: "Garde le contexte ouvert, la reponse arrive ici.",
-    errorSummary: "Je n'ai pas pu generer l'explication.",
-    errorTakeaway: "Tu peux reessayer ou verifier la connexion du fournisseur configure.",
-    sectionDisabled: "Cette section ne sera pas demandee lors de la prochaine explication.",
+    loadingSummary: "Lecture du code sélectionné.",
+    loadingTakeaway: "La réponse arrive ici.",
+    errorSummary: "Impossible de générer l'explication.",
+    errorTakeaway: "Réessaie ou vérifie la connexion du fournisseur configuré.",
+    sectionDisabled: "Cette section ne sera pas demandée lors de la prochaine explication.",
     moreSimple: "Plus simple",
-    moreDetailed: "Plus detaille",
-    retry: "Reessayer",
-    settings: "Parametres",
-    settingsButton: "Parametres",
-    generalIdea: "Idee generale",
-    details: "Details",
-    takeaway: "A retenir",
-    hint: "Astuce : selectionne juste la partie qui te bloque pour obtenir une explication plus nette.",
+    moreDetailed: "Approfondir",
+    retry: "Réessayer",
+    settings: "Paramètres",
+    settingsButton: "Paramètres",
+    generalIdea: "Résumé",
+    details: "Fonctionnement",
+    takeaway: "À retenir",
+    hint: "Sélectionne la partie à comprendre pour cibler l’explication.",
     loadModels: "Charger les modèles disponibles",
     chooseModel: "Modèles disponibles",
     provider: "Fournisseur",
-    model: "Modele",
-    explanationSections: "Sections a generer",
+    model: "Modèle",
+    explanationSections: "Sections à générer",
     ollamaUrl: "URL Ollama",
     openAiBaseUrl: "URL de base compatible OpenAI",
     anthropicBaseUrl: "URL de base compatible Anthropic",
-    apiKey: "Cle API",
-    apiKeyPlaceholder: "Laisse vide pour garder la cle enregistree",
+    apiKey: "Clé API",
+    apiKeyPlaceholder: "Laisse vide pour garder la clé enregistrée",
     apiKeyNotNeeded: "inutile avec Ollama",
-    apiKeyStored: "cle deja enregistree",
-    apiKeyMissing: "aucune cle enregistree",
-    clearApiKey: "Supprimer la cle API enregistree pour ce fournisseur",
-    connectionStatus: "Etat de la connexion",
-    checkConnection: "Verifier la connexion",
+    apiKeyStored: "clé déjà enregistrée",
+    apiKeyMissing: "aucune clé enregistrée",
+    clearApiKey: "Supprimer la clé API enregistrée pour ce profil",
+    connectionStatus: "État de la connexion",
+    checkConnection: "Vérifier la connexion",
     testGeneration: "Tester la génération",
     profileManage: "Changer ou gérer les profils",
     advanced: "Options avancées",
@@ -1209,9 +1213,9 @@ function getFrenchUiText(): Record<string, string> {
     beginner: "Débutant", intermediate: "Intermédiaire", advancedLevel: "Avancé", length: "Longueur", short: "Courte", medium: "Moyenne", long: "Longue",
     contextPreferences: "Contexte", surroundingLines: "Lignes autour du code", related: "Inclure des extraits liés du projet", relatedCount: "Nombre maximal d'extraits liés", relatedLines: "Lignes par extrait", contextBudget: "Budget de contexte (caractères)",
     cloudPrivacyNote:
-      "Ollama garde les requetes en local. Les fournisseurs cloud recoivent le code que tu demandes a XPlanator d'expliquer.",
+      "Les fournisseurs distants reçoivent le code et le contexte envoyés. Un serveur Ollama distant reçoit également ces données.",
     apiKeySecurityNote:
-      "Les cles API ne sont jamais reaffichees apres l'enregistrement et sont stockees avec le SecretStorage de VS Code.",
+      "Les clés API sont stockées avec SecretStorage et ne sont pas réaffichées.",
     saveSettings: "Enregistrer",
     cancelSettings: "Annuler",
     noDistinctSummary: "Le modele n'a pas fourni de resume distinct.",
@@ -1247,7 +1251,7 @@ function getUiText(language: UiLanguage): Record<string, string> {
       settings: "Settings",
       settingsButton: "Settings",
       generalIdea: "Big picture",
-      details: "Details",
+      details: "Fonctionnement",
       takeaway: "Key takeaway",
       hint: "Tip: select only the part that blocks you to get a sharper explanation.",
       loadModels: "Load available models",

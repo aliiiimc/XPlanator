@@ -2,6 +2,10 @@
 
 XPlanator helps you understand code in VS Code. Select code or put the cursor inside a symbol, then ask for a focused explanation. The extension does not edit your source code or run its own hosted backend.
 
+![Rendered panel preview with sample data](docs/images/panel-preview.png)
+
+*Rendered preview using sample content and a dark editor theme.*
+
 ## What it does
 
 - Explain a selection, the current line, an enclosing function or class, or a bounded file.
@@ -38,7 +42,7 @@ Before a new remote generation, XPlanator shows its destination and offers a pre
 
 API keys are stored through SecretStorage, not plain-text settings. Network redirects are refused. The selected provider receives the prompt and applies its own retention and security policies. See [SECURITY_MODEL.md](./SECURITY_MODEL.md).
 
-History is **off by default**. Enabling it stores local snapshots of code, explanations and questions in VS Code extension state. Common credential patterns and sensitive paths are filtered on a best-effort basis; no filter detects all confidential information. Set `explainCode.historyLimit` to control retention. Disabling history stops future saves but does not delete existing entries; use the History menu to delete them. XPlanator marks a snapshot when the original source differs or cannot be checked.
+History is **off by default**. Enabling it stores local snapshots of code, explanations and questions in VS Code extension state. Common credential patterns and sensitive paths are filtered on a best-effort basis; no filter detects all confidential information. Set `explainCode.historyLimit` to control retention. Disabling history stops future saves but does not delete existing entries; use the History menu to delete them. XPlanator marks a snapshot when the original source differs or cannot be checked; source files over one million characters cannot be checked for changes.
 
 ## Preferences
 
@@ -56,7 +60,7 @@ npx @vscode/vsce package
 
 To test the extension interactively, open the repository in VS Code, compile with `npm run compile`, press **F5** and use the Extension Development Host. `test/extensionHost.cjs` is an additional host smoke test; the automated `npm test` suite uses simulated providers and does not need paid keys. [MANUAL_TESTS.md](./MANUAL_TESTS.md) covers real-provider and UI checks; [PACKAGING.md](./PACKAGING.md) describes packaging and release checks.
 
-Streaming and structured output have been exercised against local Ollama with `qwen2.5-coder:latest`; cloud provider protocols have been tested with mocks, not live accounts. UI behavior and current VS Code compatibility still require a full interactive release check. See [ROADMAP.md](./ROADMAP.md) for remaining work.
+Streaming and structured output have been exercised against local Ollama with `qwen2.5-coder:latest`. A VS Code 1.144.1 Extension Host smoke test also exercised selected-code generation with that local model. Cloud provider protocols have been tested with mocks, not live accounts. Theme and narrow-panel previews were reviewed using sample data; a full interactive accessibility check remains useful. See [ROADMAP.md](./ROADMAP.md) for remaining work.
 
 ## Security and contribution
 

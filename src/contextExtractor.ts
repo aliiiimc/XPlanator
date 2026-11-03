@@ -1,5 +1,6 @@
 import * as path from "path";
 import { realpath, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import * as vscode from "vscode";
 import { CodeContext, ExtensionConfig, RelatedSnippet } from "./types";
 import { shouldSkipSameFileRelatedRange } from "./contextSnippetProximity";
@@ -22,6 +23,7 @@ export async function getCodeContext(
   mode: ContextMode = "auto"
 ): Promise<CodeContext> {
   const document = editor.document;
+  const version = document.version;
   const selection = editor.selection;
   const hasSelection = (mode === "selection" || (mode === "auto" && preferSelection)) && !selection.isEmpty;
   const wordRange = document.getWordRangeAtPosition(selection.active);
@@ -75,7 +77,11 @@ export async function getCodeContext(
   const remaining = budget - selectedCode.length;
   const surroundingBudget = config.includeRelatedContext && config.maxRelatedSnippets > 0 ? Math.floor(remaining * 0.6) : remaining;
   const surroundingCode = surroundingBudget > 32 ? buildNumberedSnippet(document, contextStartLine, contextEndLine, surroundingBudget - 24) : "";
+  const documentEnd = document.lineAt(document.lineCount - 1).range.end;
+  const sourceHash = document.offsetAt(documentEnd) <= 1_000_000
+    ? createHash("sha256").update(document.getText()).digest("hex") : undefined;
   const relatedSnippets = await collectRelatedSnippets(document, targetRange, config, Math.max(0, remaining - surroundingCode.length));
+  if (document.version !== version) throw new Error("Le fichier a changé pendant la collecte du contexte. Réessayez.");
 
   return {
     fileName: path.basename(document.fileName),
@@ -90,6 +96,7 @@ export async function getCodeContext(
     endLine: targetEndLine + 1,
     startCharacter: targetRange.start.character,
     endCharacter: targetRange.end.character,
+    sourceHash,
     hasSelection
   };
 }

@@ -42,7 +42,7 @@ test('related context stays within a trusted workspace and skips sensitive and l
     const document = { fileName: sourceUri.fsPath, languageId: 'typescript', uri: sourceUri, lineCount: 1,
       lineAt: () => ({ text: source, range: new Range(point, new Position(0, source.length)) }),
       offsetAt: position => position.character,
-      getText: range => source.slice(range.start.character, range.end.character), getWordRangeAtPosition: () => undefined };
+      getText: range => range ? source.slice(range.start.character, range.end.character) : source, getWordRangeAtPosition: () => undefined };
     const editor = { document, selection: { isEmpty: false, start: point, end: new Position(0, source.length), active: point } };
     const config = { maxSurroundingLines: 20, includeRelatedContext: true, maxRelatedSnippets: 8, maxRelatedLinesPerSnippet: 8, maxContextCharacters: 8000 };
     const result = await getCodeContext(editor, config, true);

@@ -11,7 +11,7 @@ test('an older response cannot overwrite a newer explanation', async () => {
   const text = 'const x = 1;';
   const document = { fileName: '/work/example.ts', languageId: 'typescript', lineCount: 1, uri: { scheme: 'file' },
     lineAt: () => ({ text, range: new Range(new Position(0, 0), new Position(0, text.length)) }), offsetAt: position => position.character,
-    getText: range => text.slice(range.start.character, range.end.character), getWordRangeAtPosition: () => undefined };
+    getText: range => range ? text.slice(range.start.character, range.end.character) : text, getWordRangeAtPosition: () => undefined };
   const editor = { document, selection: { isEmpty: false, start: new Position(0, 0), end: new Position(0, text.length), active: new Position(0, text.length) } };
   const surface = { visible: true, webview: { html: '', postMessage: async () => true, onDidReceiveMessage() {} }, onDidDispose() {}, reveal() {} };
   const config = { provider: 'ollama', model: 'fake', ollamaUrl: 'http://localhost:11434' };

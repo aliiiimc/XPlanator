@@ -24,8 +24,10 @@ export class AiClient {
         const response = await fetch(url, { method: "GET", headers, redirect: "error", signal: controller.signal });
         if (!response.ok) throw new Error(await describeHttpError(response, config.language));
         let payload: T & { error?: unknown };
-        try { payload = JSON.parse(await response.text()) as T & { error?: unknown }; }
+        const text = await readBoundedJson(response);
+        try { payload = JSON.parse(text) as T & { error?: unknown }; }
         catch { throw new Error(config.language === "fr" ? "Le catalogue renvoyé n'est pas un JSON valide." : "The catalog response is not valid JSON."); }
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error(config.language === "fr" ? "Réponse de catalogue invalide." : "Invalid catalog response.");
         if (payload?.error) throw new Error(config.language === "fr" ? "Le fournisseur a signalé une erreur dans son catalogue." : "The provider reported a catalog error.");
         return payload;
       } catch (error) {
@@ -41,6 +43,24 @@ export class AiClient {
       throw new Error(config.language === "fr" ? `Aucune clé API enregistrée pour ${getProviderLabel(config.provider)}.` : `No API key is configured for ${getProviderLabel(config.provider)}.`);
     }
   }
+}
+
+async function readBoundedJson(response: Response): Promise<string> {
+  if (!response.body) return response.text();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let result = "";
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      result += decoder.decode(chunk.value, { stream: !chunk.done });
+      if (result.length > 4_000_000) throw new Error("Catalogue trop volumineux.");
+      if (chunk.done) return result;
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally { reader.releaseLock(); }
 }
 
 function validateEndpoint(value: string): void {
