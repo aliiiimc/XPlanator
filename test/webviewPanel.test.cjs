@@ -23,6 +23,9 @@ test('webview renders safe HTML and keeps settings drafts while generation finis
     assert.equal(messages.at(-1).text, '<script>bad</script>'); // inserted with textContent in the webview
     const settings = { provider: 'openai', model: 'test', ollamaUrl: 'http://localhost:11434', openAiBaseUrl: 'https://api.openai.com/v1', anthropicBaseUrl: 'https://api.anthropic.com/v1', profileName: 'My profile', hasApiKey: false, providerStatus: { kind: 'idle', message: 'unchecked' } };
     panel.showSettings(settings, 'fr');
+    assert.match(surface.webview.html, /Charger les modèles disponibles/);
+    assert.match(surface.webview.html, />Modèle<\/label>/);
+    assert.doesNotMatch(surface.webview.html, /mod�les/i);
     const draftHtml = surface.webview.html;
     panel.showExplanation({ codeContext: context, explanation: 'Détails: <img src=x onerror=alert(1)>' }, 'fr', sections, true);
     assert.equal(surface.webview.html, draftHtml);

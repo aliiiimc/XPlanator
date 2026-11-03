@@ -2,7 +2,7 @@
   "name": "xplanator",
   "displayName": "XPlanator",
   "description": "Understand selected code in VS Code with OpenAI/Codex, Claude, Gemini, or local Ollama explanations.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "aliiiimc",
   "license": "MIT",
   "repository": {

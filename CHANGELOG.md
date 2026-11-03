@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Ensure French model labels display accented characters correctly.
+
 ## 0.2.0
 
 - Stream supported provider responses and allow cancellation; interrupted or truncated streams are reported as errors.
