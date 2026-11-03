@@ -50,6 +50,11 @@
         "category": "Explain Code"
       },
       {
+        "command": "explainCode.explainWithContext",
+        "title": "XPlanator: Explain with Context Mode",
+        "category": "XPlanator"
+      },
+      {
         "command": "explainCode.explainMoreSimply",
         "title": "Explain Code: Explain More Simply",
         "category": "Explain Code"
@@ -87,6 +92,11 @@
         {
           "command": "explainCode.explainAtCursor",
           "group": "navigation@11",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "explainCode.explainWithContext",
+          "group": "navigation@12",
           "when": "editorTextFocus"
         }
       ]
@@ -131,8 +141,8 @@
         },
         "explainCode.model": {
           "type": "string",
-          "default": "gpt-5-nano",
-          "description": "Model used to explain code. Examples: gpt-5-nano, gpt-4o-mini, qwen2.5-coder, gemini-2.5-flash, claude-sonnet-4-5."
+          "default": "",
+          "description": "Legacy model setting used when migrating to provider profiles. Choose a model in the XPlanator settings."
         },
         "explainCode.maxSurroundingLines": {
           "type": "number",
@@ -150,6 +160,12 @@
           ],
           "default": "beginner",
           "description": "Default tone used for quick explanations."
+        },
+        "explainCode.responseLength": {
+          "type": "string",
+          "enum": ["short", "medium", "long"],
+          "default": "medium",
+          "description": "Preferred maximum length for generated explanations."
         },
         "explainCode.explanationSections": {
           "type": "array",
@@ -189,6 +205,20 @@
           "default": false,
           "description": "Include extra workspace snippets from definitions and references when available."
         },
+        "explainCode.historyEnabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Opt in to local history. It stores code snapshots, explanations and questions on this device; sensitive-data detection is best effort."
+        },
+        "explainCode.historyLimit": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 100,
+          "scope": "application",
+          "description": "Maximum number of locally stored explanations."
+        },
         "explainCode.maxRelatedSnippets": {
           "type": "number",
           "default": 0,
@@ -216,7 +246,7 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && node --test out/*.test.js"
+    "test": "npm run compile && node --test out/*.test.js test/*.test.cjs"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

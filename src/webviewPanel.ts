@@ -7,10 +7,18 @@ type PanelAction =
   | "moreSimple"
   | "moreDetailed"
   | "retry"
+  | "cancelGeneration"
+  | "streamReady"
   | "settings"
+  | "profiles"
+  | "history"
+  | "askQuestion"
+  | "questionDraft"
+  | "example"
   | "saveSettings"
   | "cancelSettings"
   | "checkSettingsConnection"
+  | "testGeneration"
   | "listModels"
   | "setExplanationSections"
   | `copy:${SectionKey}`;
@@ -20,14 +28,18 @@ export interface PanelMessage {
   settings?: ModelSettingsInput;
   requestId?: number;
   explanationSections?: ExplanationSection[];
+  question?: string;
 }
 
 interface PanelState {
   codeContext: CodeContext;
   explanation: string;
+  sourceStatus?: string;
+  usageInfo?: string;
 }
 
 interface SettingsViewModel extends ModelSettingsInput {
+  profileName: string;
   hasApiKey: boolean;
   providerStatus: ProviderConnectionStatus;
 }
@@ -38,13 +50,18 @@ export class ExplanationPanel {
   private panel: vscode.WebviewPanel | undefined;
   private latestState: PanelState | undefined;
   private latestSections: ExplanationSections | undefined;
+  private streamedText = "";
+  private questionDraft = "";
+  private view: "settings" | "explanation" | "loading" = "explanation";
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly onAction: (message: PanelMessage) => void
+    private readonly onAction: (message: PanelMessage) => void,
+    private readonly getActiveModel: () => string = () => ""
   ) {}
 
   showEmptyState(language: UiLanguage, explanationSections: ExplanationSection[] = allExplanationSections): void {
+    this.view = "explanation";
     const panel = this.ensurePanel();
     const text = getUiText(language);
     const sections: ExplanationSections = {
@@ -67,7 +84,9 @@ export class ExplanationPanel {
     this.revealPanel(panel);
   }
 
-  showLoading(message: string, language: UiLanguage, explanationSections: ExplanationSection[]): void {
+  showLoading(message: string, language: UiLanguage, explanationSections: ExplanationSection[], context?: CodeContext): void {
+    this.view = "loading";
+    this.streamedText = "";
     const panel = this.ensurePanel();
     const text = getUiText(language);
     const sections: ExplanationSections = {
@@ -81,7 +100,7 @@ export class ExplanationPanel {
       language,
       title: text.appName,
       subtitle: text.analyzing,
-      metadata: [],
+      metadata: context ? buildMetadata(context, language) : [],
       sections,
       isError: false,
       loading: true,
@@ -90,22 +109,28 @@ export class ExplanationPanel {
     this.revealPanel(panel);
   }
 
-  showExplanation(state: PanelState, language: UiLanguage, explanationSections: ExplanationSection[]): void {
+  showExplanation(state: PanelState, language: UiLanguage, explanationSections: ExplanationSection[], preserveSettings = false): void {
     this.latestState = state;
-    const panel = this.ensurePanel();
     const text = getUiText(language);
     const sections = parseExplanation(state.explanation, language);
     this.latestSections = sections;
+    if (preserveSettings && this.view === "settings") return;
+    this.view = "explanation";
+    const panel = this.ensurePanel();
+    // A provider may ignore requested headings. Never hide the only answer.
+    const visibleSections = explanationSections.some(section => Boolean(sections[section]))
+      ? explanationSections : allExplanationSections.filter(section => Boolean(sections[section]));
     panel.title = text.appName;
     panel.webview.html = this.renderHtml({
       language,
       title: text.appName,
       subtitle: "",
-      metadata: buildMetadata(state.codeContext, language),
+      metadata: [...buildMetadata(state.codeContext, language), ...(state.usageInfo ? [state.usageInfo] : [])],
+      sourceStatus: state.sourceStatus,
       sections,
       isError: false,
       loading: false,
-      explanationSections
+      explanationSections: visibleSections
     });
     this.revealPanel(panel);
   }
@@ -116,6 +141,8 @@ export class ExplanationPanel {
     codeContext?: CodeContext,
     explanationSections: ExplanationSection[] = allExplanationSections
   ): void {
+    if (this.view === "settings") return;
+    this.view = "explanation";
     const panel = this.ensurePanel();
     const text = getUiText(language);
     const sections: ExplanationSections = {
@@ -139,6 +166,7 @@ export class ExplanationPanel {
   }
 
   showSettings(settings: SettingsViewModel, language: UiLanguage): void {
+    this.view = "settings";
     const panel = this.ensurePanel();
     const text = getUiText(language);
 
@@ -163,6 +191,26 @@ export class ExplanationPanel {
 
   sendModels(requestId: number | undefined, models: string[], error?: string): void {
     void this.panel?.webview.postMessage({ action: "models", requestId, models, error });
+  }
+
+  sendConnectionStatus(status: ProviderConnectionStatus, requestId?: number): void {
+    void this.panel?.webview.postMessage({ action: "connectionStatus", status, requestId });
+  }
+
+  appendStream(text: string): void {
+    this.streamedText += text;
+    this.sendStreamSnapshot();
+  }
+
+  sendStreamSnapshot(): void {
+    void this.panel?.webview.postMessage({ action: "stream", text: this.streamedText });
+  }
+
+  setQuestionDraft(value: string): void { this.questionDraft = value.slice(0, 4000); }
+
+  setSourceStatus(value: string | undefined): void {
+    if (this.latestState) this.latestState.sourceStatus = value;
+    void this.panel?.webview.postMessage({ action: "sourceStatus", value: value ?? "" });
   }
 
   getLatestExplanationText(): string | undefined {
@@ -218,6 +266,7 @@ export class ExplanationPanel {
     title: string;
     subtitle: string;
     metadata: string[];
+    sourceStatus?: string;
     sections: ExplanationSections;
     isError: boolean;
     loading: boolean;
@@ -238,7 +287,9 @@ export class ExplanationPanel {
     const selectedSections = normalizeExplanationSections(input.explanationSections);
     const bodyContent = input.settings
       ? renderSettingsView(input.settings, text)
-      : `${metadata}
+      : input.loading
+      ? `${metadata}<div id="streamOutput" class="card contentText" role="status" aria-live="polite"></div>`
+      : `${metadata}<div id="sourceStatus" class="providerNote" role="status">${escapeHtml(input.sourceStatus ?? "")}</div>
       <div class="sections">
         ${allExplanationSections
           .map((section) =>
@@ -545,6 +596,7 @@ export class ExplanationPanel {
         gap: 12px;
       }
 
+      .field[hidden] { display: none; }
       .field {
         display: grid;
         gap: 6px;
@@ -674,6 +726,30 @@ export class ExplanationPanel {
           grid-column: span 1;
         }
       }
+      /* Follow the editor theme and give explanations a single reading column. */
+      body { padding: 16px; font-size: var(--vscode-font-size); }
+      .layout { max-width: 760px; gap: 14px; }
+      .hero { border: 0; border-bottom: 1px solid var(--vscode-panel-border); border-radius: 0; padding: 0 0 12px; background: transparent; }
+      .title { font-size: 16px; font-weight: 650; }
+      .subtitle { font-size: 12px; text-transform: none; letter-spacing: normal; white-space: normal; font-weight: 400; }
+      .modelLabel { margin-top: 4px; color: var(--vscode-descriptionForeground); font-size: 12px; overflow-wrap: anywhere; }
+      .sections { display: flex; flex-direction: column; gap: 0; }
+      .card { border: 0; border-bottom: 1px solid var(--vscode-panel-border); border-radius: 0; padding: 15px 0; background: transparent; }
+      .sectionLabel { font-size: 13px; font-weight: 600; }
+      .content { font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+      .contentStrong { font-weight: 400; }
+      .metaChip { padding: 2px 0; border: 0; border-radius: 0; background: transparent; }
+      .metaRow { column-gap: 14px; }
+      button { border-radius: 4px; padding: 5px 9px; font-size: 12px; font-weight: 500; box-shadow: none; }
+      button:hover { background: var(--vscode-button-hoverBackground); box-shadow: none; }
+      button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); box-shadow: none; }
+      .actions { margin: 0; }
+      .statusRow { gap: 8px; }
+      .preferenceGroup { margin-top: 14px; border-top: 1px solid var(--vscode-panel-border); padding-top: 12px; }
+      .preferenceGroup summary, details.field > summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
+      #question { flex: 1; min-width: 0; }
+      input:focus-visible, select:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     </style>
   </head>
   <body>
@@ -683,26 +759,34 @@ export class ExplanationPanel {
           <div class="heading">
             <div class="title">${escapeHtml(input.title)}</div>
             ${subtitle}
+            ${this.getActiveModel() ? `<div class="modelLabel">${escapeHtml(this.getActiveModel())}</div>` : ""}
           </div>
-          <button class="settingsFab" data-action="settings" title="${escapeHtml(text.settings)}" aria-label="${escapeHtml(text.settings)}">${escapeHtml(text.settingsButton)}</button>
-        </div>
-        <div class="actions">
-          <button data-action="moreSimple">${escapeHtml(text.moreSimple)}</button>
-          <button data-action="moreDetailed">${escapeHtml(text.moreDetailed)}</button>
-          <button class="secondary" data-action="retry">${escapeHtml(text.retry)}</button>
+          <div><button class="secondary" data-action="history">${input.language === "fr" ? "Historique" : "History"}</button>
+          <button class="settingsFab" data-action="settings" title="${escapeHtml(text.settings)}" aria-label="${escapeHtml(text.settings)}">${escapeHtml(text.settingsButton)}</button></div>
         </div>
       </section>
       ${bodyContent}
+      <div class="actions">
+          ${input.loading ? `<button class="secondary" data-action="cancelGeneration">${input.language === "fr" ? "Annuler" : "Cancel"}</button>` : ""}
+          ${!input.loading && this.latestState && !input.settings ? `
+          <button data-action="moreSimple">${escapeHtml(text.moreSimple)}</button>
+          <button data-action="moreDetailed">${escapeHtml(text.moreDetailed)}</button>
+          <button data-action="example">${input.language === "fr" ? "Donner un exemple" : "Give an example"}</button>
+          ` : ""}
+          ${!input.loading && !input.settings && (this.latestState || input.isError) ? `<button class="secondary" data-action="retry">${escapeHtml(text.retry)}</button>` : ""}
+      </div>
+      ${!input.loading && this.latestState && !input.settings ? `<form id="questionForm" class="statusRow"><input id="question" maxlength="4000" value="${escapeHtml(this.questionDraft)}" aria-label="${input.language === "fr" ? "Question sur le code" : "Question about the code"}" placeholder="${input.language === "fr" ? "Posez une question sur ce code…" : "Ask a question about this code…"}" required /><button type="submit">${input.language === "fr" ? "Envoyer" : "Ask"}</button></form>` : ""}
     </div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
-      const defaultModels = {
-        ollama: "qwen2.5-coder",
-        openai: "gpt-5-nano",
-        meta: "muse-spark-1.3",
-        gemini: "gemini-2.5-flash",
-        anthropic: "claude-sonnet-4-5"
-      };
+      document.querySelector("#questionForm")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const question = document.querySelector("#question")?.value.trim();
+        if (question) vscode.postMessage({ action: "askQuestion", question });
+      });
+      document.querySelector("#question")?.addEventListener("input", (event) => {
+        vscode.postMessage({ action: "questionDraft", question: event.target.value });
+      });
       const collectSettings = () => {
         const apiKeyInput = document.querySelector("#apiKey");
         return {
@@ -711,6 +795,15 @@ export class ExplanationPanel {
           ollamaUrl: document.querySelector("#ollamaUrl")?.value,
           openAiBaseUrl: document.querySelector("#openAiBaseUrl")?.value,
           anthropicBaseUrl: document.querySelector("#anthropicBaseUrl")?.value,
+          language: document.querySelector("#language")?.value,
+          responseStyle: document.querySelector("#responseStyle")?.value,
+          responseLength: document.querySelector("#responseLength")?.value,
+          maxSurroundingLines: Number(document.querySelector("#maxSurroundingLines")?.value),
+          includeRelatedContext: document.querySelector("#includeRelatedContext")?.checked,
+          maxRelatedSnippets: Number(document.querySelector("#maxRelatedSnippets")?.value),
+          maxRelatedLinesPerSnippet: Number(document.querySelector("#maxRelatedLinesPerSnippet")?.value),
+          maxContextCharacters: Number(document.querySelector("#maxContextCharacters")?.value),
+          timeoutSeconds: Number(document.querySelector("#timeoutSeconds")?.value),
           apiKey: apiKeyInput?.value ?? "",
           clearApiKey: document.querySelector("#clearApiKey")?.checked
         };
@@ -723,11 +816,27 @@ export class ExplanationPanel {
       const modelStatus = document.querySelector("#modelStatus");
       window.addEventListener("message", (event) => {
         const message = event.data;
+        if (message.action === "stream") {
+          const output = document.querySelector("#streamOutput");
+          if (output) output.textContent = message.text;
+          return;
+        }
+        if (message.action === "sourceStatus") {
+          const status = document.querySelector("#sourceStatus");
+          if (status) status.textContent = message.value;
+          return;
+        }
+        if (message.action === "connectionStatus") {
+          if (message.requestId !== modelRequestId) return;
+          const status = document.querySelector(".statusMessage");
+          if (status) { status.textContent = message.status.message; status.className = "statusMessage " + (message.status.kind === "success" ? "statusSuccess" : "statusError"); }
+          return;
+        }
         if (message.action !== "models" || message.requestId !== modelRequestId || !modelSelect || !modelStatus) return;
         modelSelect.replaceChildren();
         const placeholder = document.createElement("option");
         placeholder.value = "";
-        placeholder.textContent = ${JSON.stringify(input.language === "fr" ? "Choisir un mod�le" : "Choose a model")};
+        placeholder.textContent = ${JSON.stringify(input.language === "fr" ? "Choisir un modèle" : "Choose a model")};
         modelSelect.appendChild(placeholder);
         for (const id of message.models) {
           const option = document.createElement("option");
@@ -735,8 +844,8 @@ export class ExplanationPanel {
         }
         modelSelect.disabled = !message.models.length;
         modelStatus.textContent = message.error || (message.models.length
-          ? ${JSON.stringify(input.language === "fr" ? "Choisissez un mod�le dans la liste. Sa disponibilit� d�pend aussi de votre compte et de ses droits." : "Choose a model. Availability also depends on your account and permissions.")}
-          : ${JSON.stringify(input.language === "fr" ? "Aucun mod�le trouv�. Vous pouvez saisir son nom manuellement." : "No models found. You can enter a model manually.")});
+          ? ${JSON.stringify(input.language === "fr" ? "Choisissez un modèle dans la liste. Sa disponibilité dépend aussi de votre compte et de ses droits." : "Choose a model. Availability also depends on your account and permissions.")}
+          : ${JSON.stringify(input.language === "fr" ? "Aucun modèle trouvé. Vous pouvez saisir son nom manuellement." : "No models found. You can enter a model manually.")});
         const button = document.querySelector('[data-action="listModels"]');
         if (button) button.disabled = false;
       });
@@ -763,13 +872,15 @@ export class ExplanationPanel {
           if (action === "listModels") {
             modelRequestId++;
             button.disabled = true;
-            if (modelStatus) modelStatus.textContent = ${JSON.stringify(input.language === "fr" ? "Chargement des mod�les�" : "Loading models�")};
+            if (modelStatus) modelStatus.textContent = ${JSON.stringify(input.language === "fr" ? "Chargement des modèles…" : "Loading models…")};
             vscode.postMessage({ action, requestId: modelRequestId, settings: collectSettings() });
             return;
           }
-          if (action === "saveSettings" || action === "checkSettingsConnection") {
+          if (action === "saveSettings" || action === "checkSettingsConnection" || action === "testGeneration") {
+            if (action !== "saveSettings") modelRequestId++;
             vscode.postMessage({
               action,
+              requestId: modelRequestId,
               settings: collectSettings()
             });
             return;
@@ -793,11 +904,23 @@ export class ExplanationPanel {
       }
       const provider = document.querySelector("#provider");
       const model = document.querySelector("#model");
+      model?.addEventListener("input", () => {
+        modelRequestId++;
+        const query = model.value.trim().toLocaleLowerCase();
+        for (const option of modelSelect?.options ?? []) {
+          option.hidden = Boolean(option.value) && !option.value.toLocaleLowerCase().includes(query);
+        }
+      });
       const apiKey = document.querySelector("#apiKey");
       const clearApiKey = document.querySelector("#clearApiKey");
       let previousProvider = provider?.value;
+      const draftModels = {};
       const refreshProviderFields = () => {
         const needsApiKey = provider?.value !== "ollama";
+        for (const [id, owner] of [["ollamaUrl", "ollama"], ["openAiBaseUrl", "openai"], ["anthropicBaseUrl", "anthropic"]]) {
+          const field = document.querySelector("#" + id)?.closest(".field");
+          if (field) field.hidden = provider?.value !== owner;
+        }
         if (model) {
           model.disabled = false;
         }
@@ -820,8 +943,9 @@ export class ExplanationPanel {
         if (modelStatus) modelStatus.textContent = "";
         const loadButton = document.querySelector('[data-action="listModels"]');
         if (loadButton) loadButton.disabled = false;
-        if (model && (!model.value.trim() || model.value.trim() === defaultModels[previousProvider])) {
-          model.value = defaultModels[provider.value] || "";
+        if (model) {
+          if (previousProvider) draftModels[previousProvider] = model.value;
+          model.value = draftModels[provider.value] || "";
         }
         if (apiKey) apiKey.value = "";
         if (clearApiKey) clearApiKey.checked = false;
@@ -833,6 +957,7 @@ export class ExplanationPanel {
         refreshProviderFields();
       });
       refreshProviderFields();
+      if (document.querySelector("#streamOutput")) vscode.postMessage({ action: "streamReady" });
     </script>
   </body>
 </html>`;
@@ -850,10 +975,12 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
         : "";
 
   return `<section class="settingsView">
+    <div class="statusRow"><div><strong>${escapeHtml(settings.profileName)}</strong></div>
+      <button class="secondary" data-action="profiles">${text.profileManage}</button></div>
     <div class="settingsGrid">
       <div class="field">
         <label for="provider">${escapeHtml(text.provider)}</label>
-        <select id="provider">
+        <select id="provider" disabled>
           ${renderProviderOption("ollama", "Ollama local", settings.provider)}
           ${renderProviderOption("openai", "OpenAI / Codex", settings.provider)}
           ${renderProviderOption("meta", "Meta Muse", settings.provider)}
@@ -863,11 +990,12 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
       </div>
       <div class="field">
         <label for="model">${escapeHtml(text.model)}</label>
-        <input id="model" value="${escapeHtml(settings.model)}" placeholder="gpt-5-nano" />
+        <input id="model" value="${escapeHtml(settings.model)}" placeholder="${escapeHtml(text.chooseModel)}" />
         <button type="button" class="secondary" data-action="listModels">${escapeHtml(text.loadModels)}</button>
         <select id="availableModels" disabled aria-label="${escapeHtml(text.chooseModel)}"></select>
         <div id="modelStatus" role="status"></div>
       </div>
+      <details class="field fieldWide"><summary>${text.advanced}</summary>
       <div class="field fieldWide">
         <label for="ollamaUrl">${escapeHtml(text.ollamaUrl)}</label>
         <input id="ollamaUrl" value="${escapeHtml(settings.ollamaUrl)}" placeholder="http://localhost:11434" />
@@ -880,6 +1008,8 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
         <label for="anthropicBaseUrl">${escapeHtml(text.anthropicBaseUrl)}</label>
         <input id="anthropicBaseUrl" value="${escapeHtml(settings.anthropicBaseUrl)}" placeholder="https://api.anthropic.com/v1" />
       </div>
+      <div class="field"><label for="timeoutSeconds">${text.timeout}</label><input id="timeoutSeconds" type="number" min="5" max="180" value="${settings.timeoutSeconds ?? 60}" /></div>
+      </details>
       <div class="field fieldWide">
         <label for="apiKey">${escapeHtml(text.apiKey)} - ${escapeHtml(keyStatus)}</label>
         <input id="apiKey" type="password" value="${escapeHtml(settings.apiKey ?? "")}" placeholder="${escapeHtml(text.apiKeyPlaceholder)}" data-key-saved="${requiresApiKey && settings.hasApiKey ? "true" : "false"}" ${requiresApiKey ? "" : "disabled"} />
@@ -891,6 +1021,22 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
         </label>
       </div>
     </div>
+    <details class="preferenceGroup" open><summary>${text.explanationPreferences}</summary>
+      <div class="settingsGrid">
+        <div class="field"><label for="language">${text.language}</label><select id="language">${renderProviderOption("fr", "Français", settings.language ?? "fr")}${renderProviderOption("en", "English", settings.language ?? "fr")}</select></div>
+        <div class="field"><label for="responseStyle">${text.level}</label><select id="responseStyle">${renderProviderOption("beginner", text.beginner, settings.responseStyle ?? "beginner")}${renderProviderOption("simple", text.intermediate, settings.responseStyle ?? "beginner")}${renderProviderOption("technical", text.advancedLevel, settings.responseStyle ?? "beginner")}</select></div>
+        <div class="field"><label for="responseLength">${text.length}</label><select id="responseLength">${renderProviderOption("short", text.short, settings.responseLength ?? "medium")}${renderProviderOption("medium", text.medium, settings.responseLength ?? "medium")}${renderProviderOption("long", text.long, settings.responseLength ?? "medium")}</select></div>
+      </div>
+    </details>
+    <details class="preferenceGroup"><summary>${text.contextPreferences}</summary>
+      <div class="settingsGrid">
+        <div class="field"><label for="maxSurroundingLines">${text.surroundingLines}</label><input id="maxSurroundingLines" type="number" min="10" max="200" value="${settings.maxSurroundingLines ?? 20}" /></div>
+        <div class="field"><label><input id="includeRelatedContext" type="checkbox" ${settings.includeRelatedContext ? "checked" : ""} /> ${text.related}</label></div>
+        <div class="field"><label for="maxRelatedSnippets">${text.relatedCount}</label><input id="maxRelatedSnippets" type="number" min="0" max="8" value="${settings.maxRelatedSnippets ?? 0}" /></div>
+        <div class="field"><label for="maxRelatedLinesPerSnippet">${text.relatedLines}</label><input id="maxRelatedLinesPerSnippet" type="number" min="8" max="80" value="${settings.maxRelatedLinesPerSnippet ?? 28}" /></div>
+        <div class="field"><label for="maxContextCharacters">${text.contextBudget}</label><input id="maxContextCharacters" type="number" min="4000" max="120000" value="${settings.maxContextCharacters ?? 8000}" /></div>
+      </div>
+    </details>
     <div class="settingsActions">
       <button data-action="saveSettings">${escapeHtml(text.saveSettings)}</button>
       <button class="secondary" data-action="cancelSettings">${escapeHtml(text.cancelSettings)}</button>
@@ -901,6 +1047,7 @@ function renderSettingsView(settings: SettingsViewModel, text: Record<string, st
         <div class="statusMessage ${statusClass}">${escapeHtml(settings.providerStatus.message)}</div>
       </div>
       <button class="secondary" data-action="checkSettingsConnection">${escapeHtml(text.checkConnection)}</button>
+      <button class="secondary" data-action="testGeneration">${escapeHtml(text.testGeneration)}</button>
     </div>
     <div class="providerNote">${escapeHtml(text.cloudPrivacyNote)}</div>
     <div class="providerNote">${escapeHtml(text.apiKeySecurityNote)}</div>
@@ -933,7 +1080,7 @@ function renderSectionCard(
         <input type="checkbox" value="${section}" data-explanation-section ${selected ? "checked" : ""} />
         <span class="sectionLabel">${escapeHtml(label)}</span>
       </label>
-      ${selected ? `<button class="sectionCopy" data-action="copy:${section}" title="Copy" aria-label="Copy ${escapeHtml(label)}">
+      ${selected && content ? `<button class="sectionCopy" data-action="copy:${section}" title="Copy" aria-label="Copy ${escapeHtml(label)}">
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M5 2.75A1.75 1.75 0 0 1 6.75 1h5.5A1.75 1.75 0 0 1 14 2.75v7.5A1.75 1.75 0 0 1 12.25 12h-5.5A1.75 1.75 0 0 1 5 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h5.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
             <path d="M2 5.75C2 4.784 2.784 4 3.75 4h.5v1.5h-.5a.25.25 0 0 0-.25.25v6.5c0 .138.112.25.25.25h5.5a.25.25 0 0 0 .25-.25v-.5H11v.5A1.75 1.75 0 0 1 9.25 14h-5.5A1.75 1.75 0 0 1 2 12.25Z"></path>
@@ -974,7 +1121,7 @@ function buildMetadata(context: CodeContext, language: UiLanguage): string[] {
         ? `lines ${context.startLine}-${context.endLine}`
         : `lignes ${context.startLine}-${context.endLine}`;
 
-  const metadata = [context.fileName, context.languageId, lineLabel];
+  const metadata = [context.fileName, ...(context.symbolUnderCursor ? [context.symbolUnderCursor] : []), context.languageId, lineLabel];
   if (context.relatedSnippets.length > 0) {
     metadata.push(language === "en" ? `${context.relatedSnippets.length} linked snippets` : `${context.relatedSnippets.length} extraits liés`);
   }
@@ -1039,8 +1186,8 @@ function getFrenchUiText(): Record<string, string> {
     details: "Details",
     takeaway: "A retenir",
     hint: "Astuce : selectionne juste la partie qui te bloque pour obtenir une explication plus nette.",
-    loadModels: "Charger les mod�les disponibles",
-    chooseModel: "Mod�les disponibles",
+    loadModels: "Charger les modèles disponibles",
+    chooseModel: "Modèles disponibles",
     provider: "Fournisseur",
     model: "Modele",
     explanationSections: "Sections a generer",
@@ -1055,6 +1202,12 @@ function getFrenchUiText(): Record<string, string> {
     clearApiKey: "Supprimer la cle API enregistree pour ce fournisseur",
     connectionStatus: "Etat de la connexion",
     checkConnection: "Verifier la connexion",
+    testGeneration: "Tester la génération",
+    profileManage: "Changer ou gérer les profils",
+    advanced: "Options avancées",
+    timeout: "Délai (secondes)", explanationPreferences: "Explication", language: "Langue", level: "Niveau pédagogique",
+    beginner: "Débutant", intermediate: "Intermédiaire", advancedLevel: "Avancé", length: "Longueur", short: "Courte", medium: "Moyenne", long: "Longue",
+    contextPreferences: "Contexte", surroundingLines: "Lignes autour du code", related: "Inclure des extraits liés du projet", relatedCount: "Nombre maximal d'extraits liés", relatedLines: "Lignes par extrait", contextBudget: "Budget de contexte (caractères)",
     cloudPrivacyNote:
       "Ollama garde les requetes en local. Les fournisseurs cloud recoivent le code que tu demandes a XPlanator d'expliquer.",
     apiKeySecurityNote:
@@ -1113,6 +1266,12 @@ function getUiText(language: UiLanguage): Record<string, string> {
       clearApiKey: "Delete the saved API key for this provider",
       connectionStatus: "Connection status",
       checkConnection: "Check connection",
+      testGeneration: "Test generation",
+      profileManage: "Switch or manage profiles",
+      advanced: "Advanced options",
+      timeout: "Timeout (seconds)", explanationPreferences: "Explanation", language: "Language", level: "Learning level",
+      beginner: "Beginner", intermediate: "Intermediate", advancedLevel: "Advanced", length: "Length", short: "Short", medium: "Medium", long: "Long",
+      contextPreferences: "Context", surroundingLines: "Surrounding lines", related: "Include related workspace snippets", relatedCount: "Maximum related snippets", relatedLines: "Lines per snippet", contextBudget: "Context budget (characters)",
       cloudPrivacyNote: "Ollama keeps requests local. Cloud providers receive the code you ask XPlanator to explain.",
       apiKeySecurityNote: "API keys are never displayed again after saving and are stored with VS Code SecretStorage.",
       saveSettings: "Save",

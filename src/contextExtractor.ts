@@ -1,9 +1,12 @@
 import * as path from "path";
+import { realpath, stat } from "node:fs/promises";
 import * as vscode from "vscode";
 import { CodeContext, ExtensionConfig, RelatedSnippet } from "./types";
 import { shouldSkipSameFileRelatedRange } from "./contextSnippetProximity";
+import { findEnclosingSymbol } from "./symbolSelection";
 
 const MAX_SELECTED_CHARACTERS = 12000;
+export type ContextMode = "auto" | "selection" | "line" | "function" | "class" | "file";
 
 export async function getCodeContext(
   editor: vscode.TextEditor,
@@ -15,15 +18,17 @@ export async function getCodeContext(
     | "maxRelatedLinesPerSnippet"
     | "maxContextCharacters"
   >,
-  preferSelection: boolean
+  preferSelection: boolean,
+  mode: ContextMode = "auto"
 ): Promise<CodeContext> {
   const document = editor.document;
   const selection = editor.selection;
-  const hasSelection = preferSelection && !selection.isEmpty;
+  const hasSelection = (mode === "selection" || (mode === "auto" && preferSelection)) && !selection.isEmpty;
   const wordRange = document.getWordRangeAtPosition(selection.active);
   const symbolUnderCursor = wordRange ? document.getText(wordRange) : undefined;
-  const documentSymbolRange = !hasSelection && !preferSelection
-    ? await getDocumentSymbolRange(document, selection.active)
+  if (mode === "selection" && !hasSelection) throw new Error("Sélectionnez du code avant de choisir ce mode.");
+  const documentSymbolRange = !hasSelection && (mode === "auto" || mode === "function" || mode === "class")
+    ? await getDocumentSymbolRange(document, selection.active, mode)
     : undefined;
 
   let targetRange: vscode.Range;
@@ -31,18 +36,21 @@ export async function getCodeContext(
 
   if (hasSelection) {
     targetRange = new vscode.Range(selection.start, selection.end);
-    selectedCode = document.getText(targetRange).trim();
+  } else if (mode === "file") {
+    targetRange = new vscode.Range(document.lineAt(0).range.start, document.lineAt(document.lineCount - 1).range.end);
   } else if (documentSymbolRange) {
     targetRange = documentSymbolRange.range;
-    selectedCode = document.getText(targetRange).trim();
-  } else if (wordRange) {
-    targetRange = wordRange;
-    selectedCode = document.getText(wordRange).trim();
+  } else if (mode === "function" || mode === "class") {
+    throw new Error(mode === "function" ? "Aucune fonction ou méthode n'a été détectée à cette position." : "Aucune classe n'a été détectée à cette position.");
   } else {
     const line = document.lineAt(selection.active.line);
     targetRange = line.range;
-    selectedCode = line.text.trim();
   }
+
+  if (document.offsetAt(targetRange.end) - document.offsetAt(targetRange.start) > MAX_SELECTED_CHARACTERS) {
+    throw new Error("Le code cible est trop volumineux. Sélectionnez un bloc plus petit.");
+  }
+  selectedCode = document.getText(targetRange).trim();
 
   if (!selectedCode) {
     throw new Error("Aucun code exploitable n'a ete trouve a expliquer sur la position actuelle.");
@@ -62,8 +70,12 @@ export async function getCodeContext(
   const contextStartLine = Math.max(0, targetStartLine - linesAbove);
   const contextEndLine = Math.min(document.lineCount - 1, targetEndLine + linesBelow);
 
-  const surroundingCode = buildNumberedSnippet(document, contextStartLine, contextEndLine);
-  const relatedSnippets = await collectRelatedSnippets(document, targetRange, config);
+  const budget = clampNumber(config.maxContextCharacters, 4000, 120000, 8000);
+  if (selectedCode.length > budget) throw new Error("Le code cible dépasse le budget de contexte. Augmentez la limite ou réduisez la sélection.");
+  const remaining = budget - selectedCode.length;
+  const surroundingBudget = config.includeRelatedContext && config.maxRelatedSnippets > 0 ? Math.floor(remaining * 0.6) : remaining;
+  const surroundingCode = surroundingBudget > 32 ? buildNumberedSnippet(document, contextStartLine, contextEndLine, surroundingBudget - 24) : "";
+  const relatedSnippets = await collectRelatedSnippets(document, targetRange, config, Math.max(0, remaining - surroundingCode.length));
 
   return {
     fileName: path.basename(document.fileName),
@@ -72,17 +84,20 @@ export async function getCodeContext(
     selectedCode,
     surroundingCode,
     relatedSnippets,
-    symbolUnderCursor,
+    symbolUnderCursor: documentSymbolRange?.name ?? symbolUnderCursor,
     lineNumber: targetStartLine + 1,
     startLine: targetStartLine + 1,
     endLine: targetEndLine + 1,
+    startCharacter: targetRange.start.character,
+    endCharacter: targetRange.end.character,
     hasSelection
   };
 }
 
 async function getDocumentSymbolRange(
   document: vscode.TextDocument,
-  position: vscode.Position
+  position: vscode.Position,
+  mode: ContextMode
 ): Promise<{ name: string; range: vscode.Range } | undefined> {
   let symbols: Array<vscode.DocumentSymbol | vscode.SymbolInformation> | undefined;
 
@@ -95,28 +110,11 @@ async function getDocumentSymbolRange(
     return undefined;
   }
 
-  const candidates: Array<{ name: string; range: vscode.Range; depth: number }> = [];
-  const visit = (symbol: vscode.DocumentSymbol | vscode.SymbolInformation, depth: number): void => {
-    if ("children" in symbol && "selectionRange" in symbol) {
-      if (isExplainableSymbolKind(symbol.kind) && symbol.selectionRange.contains(position)) {
-        candidates.push({ name: symbol.name, range: symbol.range, depth });
-      }
-
-      for (const child of symbol.children) {
-        visit(child, depth + 1);
-      }
-    } else if (isExplainableSymbolKind(symbol.kind) && symbol.location.range.contains(position)) {
-      candidates.push({ name: symbol.name, range: symbol.location.range, depth });
-    }
-  };
-
-  for (const symbol of symbols ?? []) {
-    visit(symbol, 0);
-  }
-
-  candidates.sort((left, right) => right.depth - left.depth || rangeLength(left.range) - rangeLength(right.range));
-  const match = candidates[0];
-  return match ? { name: match.name, range: match.range } : undefined;
+  return findEnclosingSymbol(symbols ?? [], position, kind => {
+    if (mode === "function") return [vscode.SymbolKind.Function, vscode.SymbolKind.Method, vscode.SymbolKind.Constructor].includes(kind);
+    if (mode === "class") return [vscode.SymbolKind.Class, vscode.SymbolKind.Struct, vscode.SymbolKind.Interface].includes(kind);
+    return isExplainableSymbolKind(kind);
+  });
 }
 
 function isExplainableSymbolKind(kind: vscode.SymbolKind): boolean {
@@ -133,20 +131,25 @@ function isExplainableSymbolKind(kind: vscode.SymbolKind): boolean {
   ].includes(kind);
 }
 
-function rangeLength(range: vscode.Range): number {
-  return (range.end.line - range.start.line) * 100000 + range.end.character - range.start.character;
-}
 
 function buildNumberedSnippet(
   document: vscode.TextDocument,
   startLine: number,
-  endLine: number
+  endLine: number,
+  maxCharacters = 120000
 ): string {
   const lines: string[] = [];
+  let remaining = maxCharacters;
 
   for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
     const line = document.lineAt(lineNumber);
-    lines.push(`${lineNumber + 1}: ${line.text}`);
+    const content = `${lineNumber + 1}: ${line.text}`;
+    if (content.length > remaining) {
+      lines.push(`${content.slice(0, Math.max(0, remaining))}\n[contexte tronqué]`);
+      break;
+    }
+    lines.push(content);
+    remaining -= content.length + 1;
   }
 
   return lines.join("\n");
@@ -166,20 +169,22 @@ async function collectRelatedSnippets(
   config: Pick<
     ExtensionConfig,
     "includeRelatedContext" | "maxRelatedSnippets" | "maxRelatedLinesPerSnippet" | "maxContextCharacters"
-  >
+  >,
+  remainingBudget: number
 ): Promise<RelatedSnippet[]> {
-  if (!config.includeRelatedContext) {
+  if (!config.includeRelatedContext || !vscode.workspace.isTrusted || remainingBudget <= 0) {
     return [];
   }
 
+  const maxSnippets = clampNumber(config.maxRelatedSnippets, 0, 8, 0);
+  if (maxSnippets === 0) return [];
   const relatedLocations = await getRelatedLocations(document.uri, targetRange.start);
   if (!relatedLocations.length) {
     return [];
   }
 
-  const maxSnippets = clampNumber(config.maxRelatedSnippets, 0, 8, 0);
   const maxLines = clampNumber(config.maxRelatedLinesPerSnippet, 8, 80, 28);
-  const maxCharacters = clampNumber(config.maxContextCharacters, 4000, 120000, 8000);
+  const maxCharacters = Math.min(remainingBudget, clampNumber(config.maxContextCharacters, 4000, 120000, 8000));
   const snippets: RelatedSnippet[] = [];
   let consumedCharacters = 0;
 
@@ -188,7 +193,7 @@ async function collectRelatedSnippets(
       break;
     }
 
-    if (!isSafeWorkspaceUri(candidate.uri)) {
+    if (!(await isSafeWorkspaceUri(candidate.uri))) {
       continue;
     }
 
@@ -230,14 +235,14 @@ async function getRelatedLocations(
   uri: vscode.Uri,
   position: vscode.Position
 ): Promise<Array<{ uri: vscode.Uri; range: vscode.Range; reason: string }>> {
-  const definitionResult = await vscode.commands.executeCommand<
-    Array<vscode.Location | vscode.LocationLink> | undefined
-  >("vscode.executeDefinitionProvider", uri, position);
-  const referenceResult = await vscode.commands.executeCommand<vscode.Location[] | undefined>(
-    "vscode.executeReferenceProvider",
-    uri,
-    position
-  );
+  const [definition, typeDefinition, reference] = await Promise.allSettled([
+    vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink> | undefined>("vscode.executeDefinitionProvider", uri, position),
+    vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink> | undefined>("vscode.executeTypeDefinitionProvider", uri, position),
+    vscode.commands.executeCommand<vscode.Location[] | undefined>("vscode.executeReferenceProvider", uri, position)
+  ]);
+  const definitionResult = definition.status === "fulfilled" ? definition.value : undefined;
+  const typeDefinitionResult = typeDefinition.status === "fulfilled" ? typeDefinition.value : undefined;
+  const referenceResult = reference.status === "fulfilled" ? reference.value : undefined;
 
   const results: Array<{ uri: vscode.Uri; range: vscode.Range; reason: string }> = [];
   const seen = new Set<string>();
@@ -255,6 +260,15 @@ async function getRelatedLocations(
 
     seen.add(key);
     results.push({ ...normalized, reason: "definition" });
+  }
+
+  for (const item of typeDefinitionResult ?? []) {
+    const normalized = normalizeLocation(item);
+    if (!normalized) continue;
+    const key = `${normalized.uri.toString()}:${normalized.range.start.line}:${normalized.range.start.character}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({ ...normalized, reason: "type definition" });
   }
 
   for (const location of referenceResult ?? []) {
@@ -321,7 +335,7 @@ function createRelatedSnippet(
   };
 }
 
-function isSafeWorkspaceUri(uri: vscode.Uri): boolean {
+async function isSafeWorkspaceUri(uri: vscode.Uri): Promise<boolean> {
   if (uri.scheme !== "file") {
     return false;
   }
@@ -337,7 +351,19 @@ function isSafeWorkspaceUri(uri: vscode.Uri): boolean {
   }
 
   const segments = relativePath.split(path.sep);
-  return !segments.some((segment) => segment.startsWith(".") || segment === "node_modules");
+  if (segments.some(isSensitivePathSegment)) return false;
+  try {
+    const [root, target, info] = await Promise.all([realpath(workspaceFolder.uri.fsPath), realpath(uri.fsPath), stat(uri.fsPath)]);
+    const resolvedRelative = path.relative(root, target);
+    return info.isFile() && info.size <= 1_000_000 && Boolean(resolvedRelative) &&
+      resolvedRelative !== ".." && !resolvedRelative.startsWith(`..${path.sep}`) && !path.isAbsolute(resolvedRelative) &&
+      !resolvedRelative.split(path.sep).some(isSensitivePathSegment);
+  } catch { return false; }
+}
+
+function isSensitivePathSegment(segment: string): boolean {
+  return segment.startsWith(".") || /^(node_modules|secrets?|credentials)(?:\.|$)/i.test(segment) ||
+    /^(id_rsa|id_ed25519)(?:\.|$)/i.test(segment) || /\.(pem|p12|pfx|key)$/i.test(segment);
 }
 
 function clampNumber(value: number, min: number, max: number, fallback: number): number {

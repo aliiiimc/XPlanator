@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Stream supported provider responses and allow cancellation; interrupted or truncated streams are reported as errors.
+- Add provider profiles with destination-scoped credentials and migration from the active legacy settings.
+- Support bounded contextual follow-up questions and examples.
+- Add opt-in local history, deletion, Markdown export and source-change indicators.
+- Display provider-reported usage and measured duration without fixed pricing estimates.
+- Detect the enclosing symbol when the cursor is inside its body.
+- Keep the previous explanation when reopening the panel and ignore stale generation results.
+- Make connection checks catalog-only, reject redirects, and confirm changed endpoints before diagnostics.
+- Preserve settings drafts while displaying diagnostic results.
+
+
+## Unreleased
+
 - Explain complete functions, methods, and types when the cursor is on their name.
 - Use OpenAI's `max_completion_tokens` parameter for GPT-5 models and omit the unsupported custom temperature.
 - Treat source snippets as untrusted content in explanation prompts.

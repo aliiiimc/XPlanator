@@ -1,32 +1,20 @@
 # Roadmap
 
-This roadmap keeps XPlanator focused on code understanding, not code generation.
+XPlanator focuses on understanding code rather than autonomous editing.
 
-## Near Term
+## Before public release
 
-- Add screenshots and an animated GIF for GitHub and the VS Code Marketplace
+- Exercise the complete UI and extension-host flows in current VS Code, including narrow panels and light, dark and high-contrast themes.
+- Test each cloud provider with an authorized account and a clearly identified potentially billable prompt.
+- Verify packaging, Marketplace metadata, installation and upgrade from the published extension.
+- Add screenshots and a manual test record.
 
-## Product Direction
+## Future work
 
-- Project-level explanation mode
-- Call-flow and dependency explanations
-- Learning mode with quiz questions
-- Explanation history stored locally
-- Markdown export for notes
-- Cost and token estimate for cloud providers
-- Better controls for context size
+- Improve capability discovery and optional reasoning settings without guessing from model names.
+- Evaluate the OpenAI Responses API, richer structured explanations and provider-specific streaming compatibility.
+- Improve related-context ranking, navigation to source and call hierarchy support.
+- Add reliable, maintained price data if it can be obtained and clearly distinguished from billing.
+- Expand provider diagnostics, localization, accessibility and cross-platform integration coverage.
 
-## Open Source Growth
-
-- Publish a clean first release
-- Mark beginner-friendly issues with `good first issue`
-- Add a short demo video
-- Write a comparison page: XPlanator vs Copilot/Cursor/Continue
-- Keep the core local-first and free
-
-## Not Planned For The Core
-
-- Autonomous code editing
-- Hidden backend routing
-- Required account creation
-- Required telemetry
+The extension does not plan to add autonomous code editing, a hidden routing backend, mandatory accounts or mandatory telemetry.
