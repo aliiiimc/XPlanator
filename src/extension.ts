@@ -569,7 +569,10 @@ async function testSettingsGeneration(panel: ExplanationPanel, aiClient: AiClien
   try {
     if (!preview.model.trim()) throw new Error(preview.language === "fr" ? "Choisissez un modèle." : "Choose a model.");
     const key = await keyForSettings(settings, preview);
-    await aiClient.generateStream(preview, { prompt: "Reply with OK.", maxTokens: 128,
+    const structured = Boolean(activeProfile().structuredOutput);
+    await aiClient.generateStream(preview, { prompt: structured
+      ? 'Return a JSON object with string fields "summary", "details", and "takeaway"; make summary say OK and leave the others empty.'
+      : "Reply with OK.", maxTokens: 128, structured,
       signal: new AbortController().signal, onText: () => {} }, key);
     latestProviderStatus = { kind: "success", message: preview.language === "fr" ? "Génération de test réussie. Cette requête peut être facturée." : "Test generation succeeded. This request may be billed." };
     generationVerified = true;

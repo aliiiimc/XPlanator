@@ -56,7 +56,7 @@ npx @vscode/vsce package
 
 To test the extension interactively, open the repository in VS Code, compile with `npm run compile`, press **F5** and use the Extension Development Host. `test/extensionHost.cjs` is an additional host smoke test; the automated `npm test` suite uses simulated providers and does not need paid keys. [MANUAL_TESTS.md](./MANUAL_TESTS.md) covers real-provider and UI checks; [PACKAGING.md](./PACKAGING.md) describes packaging and release checks.
 
-Streaming has been exercised against local Ollama with `qwen2.5-coder:latest`; cloud provider protocols have been tested with mocks, not live accounts. UI behavior and current VS Code compatibility still require a full interactive release check. See [ROADMAP.md](./ROADMAP.md) for remaining work.
+Streaming and structured output have been exercised against local Ollama with `qwen2.5-coder:latest`; cloud provider protocols have been tested with mocks, not live accounts. UI behavior and current VS Code compatibility still require a full interactive release check. See [ROADMAP.md](./ROADMAP.md) for remaining work.
 
 ## Security and contribution
 

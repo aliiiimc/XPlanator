@@ -86,3 +86,15 @@ test("reports a timeout separately from user cancellation", async () => {
     }), /délai/);
   } finally { globalThis.fetch = original; }
 });
+
+test("structured stream is validated before returning an explanation", async () => {
+  const original = globalThis.fetch;
+  const frame = (text: string) => JSON.stringify({ response: text, done: true, done_reason: "stop" }) + "\n";
+  const request = { prompt: "explain", maxTokens: 50, structured: true, signal: new AbortController().signal, onText: () => {} };
+  try {
+    globalThis.fetch = (async () => response([frame('{"summary":"ok","details":"","takeaway":""}')])) as typeof fetch;
+    assert.equal(await streamGeneration({ ...config, provider: "ollama" }, undefined, request), "Résumé:\nok");
+    globalThis.fetch = (async () => response([frame('{"summary":"ok"}')])) as typeof fetch;
+    await assert.rejects(streamGeneration({ ...config, provider: "ollama" }, undefined, request), /format attendu/);
+  } finally { globalThis.fetch = original; }
+});
