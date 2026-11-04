@@ -3,6 +3,7 @@ export type ExplanationMode = "quick" | "simple" | "detailed";
 export type ModelProvider = "ollama" | "openai" | "gemini" | "anthropic" | "meta";
 
 export type ResponseStyle = "simple" | "technical" | "beginner";
+export type ResponseLength = "short" | "medium" | "long";
 
 export type UiLanguage = "fr" | "en";
 
@@ -16,6 +17,7 @@ export interface ExtensionConfig {
   model: string;
   maxSurroundingLines: number;
   responseStyle: ResponseStyle;
+  responseLength: ResponseLength;
   language: UiLanguage;
   timeoutSeconds: number;
   includeRelatedContext: boolean;
@@ -34,6 +36,15 @@ export interface ModelSettingsInput {
   explanationSections?: ExplanationSection[];
   apiKey?: string;
   clearApiKey?: boolean;
+  language?: UiLanguage;
+  responseStyle?: ResponseStyle;
+  responseLength?: ResponseLength;
+  maxSurroundingLines?: number;
+  includeRelatedContext?: boolean;
+  maxRelatedSnippets?: number;
+  maxRelatedLinesPerSnippet?: number;
+  maxContextCharacters?: number;
+  timeoutSeconds?: number;
 }
 
 export interface ProviderConnectionStatus {
@@ -63,6 +74,9 @@ export interface CodeContext {
   startLine: number;
   endLine: number;
   hasSelection: boolean;
+  startCharacter?: number;
+  endCharacter?: number;
+  sourceHash?: string;
 }
 
 export interface PromptInput {
@@ -70,6 +84,7 @@ export interface PromptInput {
   responseLanguage: string;
   responseStyle: ResponseStyle;
   explanationSections: ExplanationSection[];
+  structured?: boolean;
 }
 
 export interface ExplainRequest {
@@ -109,6 +124,8 @@ export interface LastExplanationState {
   codeContext: CodeContext;
   explanation: string;
   mode: ExplanationMode;
+  sourceStatus?: string;
+  usageInfo?: string;
 }
 
 export function getProviderLabel(provider: ModelProvider): string {

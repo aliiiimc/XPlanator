@@ -11,26 +11,25 @@ interface TakeawayNormalization {
   takeaway: string;
 }
 
-export function parseExplanation(raw: string, language: UiLanguage): ExplanationSections {
+export function parseExplanation(raw: string, _language: UiLanguage): ExplanationSections {
   const normalized = sanitizeModelOutput(raw.replace(/\r\n/g, "\n").trim());
   const summary = extractSection(normalized, ["Idee generale", "Idée générale", "Resume", "Résumé", "Summary"]);
   const details = extractSection(normalized, ["Details", "Détails"]);
   const takeaway = extractSection(normalized, ["A retenir", "À retenir", "Key takeaway", "Takeaway"]);
-  const text = getParserText(language);
   const normalizedTakeaway = keepTakeawayShort(details, takeaway);
 
   if (summary || details || takeaway) {
     return {
-      summary: summary || text.noDistinctSummary,
-      details: normalizedTakeaway.details || normalized,
-      takeaway: normalizedTakeaway.takeaway || text.defaultTakeaway
+      summary,
+      details: normalizedTakeaway.details,
+      takeaway: normalizedTakeaway.takeaway
     };
   }
 
   return {
-    summary: normalized.split("\n")[0] || text.explanationAvailableBelow,
+    summary: "",
     details: normalized,
-    takeaway: text.reviewTakeaway
+    takeaway: ""
   };
 }
 

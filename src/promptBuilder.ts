@@ -78,7 +78,11 @@ function buildBasePrompt(input: PromptInput): string {
   const isEnglish = responseLanguage.toLowerCase().startsWith("en");
   const styleInstruction = getStyleInstruction(responseStyle, isEnglish);
   const format = getResponseFormat(responseLanguage);
-  const responseFormat = buildResponseFormatInstructions(responseLanguage, input.explanationSections);
+  const responseFormat = input.structured
+    ? (isEnglish
+      ? `A JSON object with string fields "summary", "details", and "takeaway". Leave unrequested fields empty. Requested fields: ${input.explanationSections.join(", ")}.`
+      : `Un objet JSON avec les champs texte "summary", "details" et "takeaway". Laisse vides les champs non demandés. Sections demandées : ${input.explanationSections.join(", ")}.`)
+    : buildResponseFormatInstructions(responseLanguage, input.explanationSections);
 
   const symbolLine = isEnglish
     ? context.symbolUnderCursor

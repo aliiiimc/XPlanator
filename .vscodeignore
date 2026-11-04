@@ -6,6 +6,7 @@
 .commandcode/**
 node_modules/**
 src/**
+test/**
 **/*.map
 out/**/*.test.js
 out/ollamaClient.js

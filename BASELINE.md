@@ -1,0 +1,3 @@
+# Baseline audit (2026-11-03)
+
+Base commit: 5842a53. `npm ci`, `npm run compile` and `npm test` succeeded on Windows; all 13 existing tests passed. TypeScript strict mode was enabled. The reported TypeScript syntax error did not reproduce. README conflict markers and mixed encodings were present. Cursor detection used the symbol name range instead of its enclosing range. Provider settings used one shared model; diagnostics performed billable generation for some providers; the panel rebuilt its HTML for state changes. No live provider or VS Code extension-host tests were performed. The declared minimum VS Code version is 1.85; current-version compatibility has not been verified in an extension host.

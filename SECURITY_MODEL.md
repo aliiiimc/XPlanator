@@ -1,96 +1,21 @@
-# Security Model
+# Security model
 
-XPlanator is designed to be local-first and transparent about when data leaves the user's machine.
+XPlanator has no project-operated backend. It sends requests from the extension host to the configured destination. The selected provider can retain or process submitted data according to its own policies; using the Ollama protocol with a remote endpoint does not make that endpoint local.
 
-This document explains how API keys and code snippets are handled.
+## Credentials and destinations
 
-## Short Version
+Keys are stored using VS Code SecretStorage and associated with a profile and normalized endpoint. They are not written to settings or intentionally logged. The settings field starts empty; an entered key is sent to the extension host for saving or testing. Redirects are rejected. Non-loopback endpoints require HTTPS. Changing an endpoint does not reuse the prior endpoint's key. The legacy provider key is retained after migration for rollback; another provider's legacy key is imported only for its original endpoint.
 
-- XPlanator has no project-owned backend.
-- Ollama runs locally when selected.
-- Cloud providers are optional and user-configured.
-- API keys are stored with VS Code `SecretStorage`.
-- API keys are never written to `settings.json`.
-- API keys are never shown again after saving.
-- API keys are never logged by XPlanator.
-- API keys are only read when making a request to the selected provider.
-- The configured provider request timeout applies to all AI provider HTTP requests.
-- Ollama uses a reduced-context profile by default to avoid sending unnecessarily large prompts to local models.
-- Saved keys can be deleted from the XPlanator settings panel.
-- Non-local custom provider URLs must use HTTPS.
-- Endpoint URL changes require an explicit confirmation before they are saved.
+A connection check reads the model catalog and sends no code. The separate generation test sends a short synthetic prompt only after confirmation and may incur charges. The generation preview shows the destination and the actual prompt before remote transmission. Confirmations are held in memory for the same prompt and destination during the session.
 
-## API Key Flow
+## Source data and history
 
-1. The user opens `Parametres`.
-2. The API key field is empty, even when a key already exists.
-3. If the user enters a key and clicks `Enregistrer`, the webview sends it once to the extension host.
-4. The extension stores it with `context.secrets`, VS Code's `SecretStorage`.
-5. Later, when a cloud provider is used, the extension reads the key from `SecretStorage`.
-6. The key is added to the HTTPS request header for that provider.
-7. The key is not included in the prompt, response, logs, README, settings, or webview HTML.
-8. The user can verify provider connectivity from the settings panel before saving changes.
+An explanation request may include the selected code, surrounding lines, optional related workspace snippets and bounded conversation history. Related collection is disabled in untrusted workspaces, excludes common sensitive paths, checks resolved paths against the workspace and skips large related files. These are best-effort safeguards, not a guarantee that confidential data is absent. Review the preview and your provider's policies.
 
-## What Is Sent To Providers
+Local history is opt-in. It stores source snapshots, explanations and questions in local extension state. Its limited sensitive-data filter cannot detect every secret. The user can disable future saves, delete entries or clear history; Markdown export writes explanation and conversation text to a chosen file.
 
-### Ollama
+## Limits
 
-When `ollama` is selected, requests are sent to the configured local Ollama URL, usually `http://localhost:11434`.
+Compromise of the operating system account, VS Code or the system keychain can expose local data. Use appropriately scoped keys and revoke them when necessary. Source content and model output are treated as untrusted data; model output is escaped before rendering and the webview has a restrictive content security policy. No filtering or prompt instruction can guarantee that a model ignores malicious instructions in code.
 
-### OpenAI / Codex
-
-When `openai` is selected, the selected code and context are sent to the configured OpenAI-compatible base URL.
-
-### Gemini
-
-When `gemini` is selected, the selected code and context are sent to the Gemini API.
-
-### Claude
-
-When `anthropic` is selected, the selected code and context are sent to the configured Anthropic-compatible Messages API base URL.
-
-## What XPlanator Does Not Do
-
-- It does not run a hosted backend.
-- It does not proxy API requests through a XPlanator server.
-- It does not store API keys in workspace files.
-- It does not store API keys in VS Code settings.
-- It does not print API keys to logs.
-- It does not include API keys in copied explanation text.
-- It does not intentionally collect telemetry.
-
-## Current Code Evidence
-
-Relevant files:
-
-- `src/aiClient.ts`: reads and stores secrets through `vscode.SecretStorage`
-- `src/webviewPanel.ts`: renders the API key input empty and only sends a new value when the user saves
-- `src/extension.ts`: saves provider settings and routes requests
-- `.gitignore`: excludes `.env`, `.env.*`, logs, and packaged `.vsix` files
-
-Useful checks:
-
-```bash
-Select-String -Path src\*.ts -Pattern "apiKey","SecretStorage","console.log","settings.json"
-npm run compile
-```
-
-## Limitations
-
-No extension can honestly promise that a key is impossible to access under all conditions.
-
-Important limits:
-
-- If the user's operating system account is compromised, local secrets may be at risk.
-- If VS Code or the OS keychain is compromised, secrets may be at risk.
-- Cloud providers receive the selected code/context when the user chooses a cloud provider.
-- The selected provider's own security and data-retention policies still apply.
-- Users should create scoped API keys when the provider supports it, rotate keys periodically, and revoke keys they no longer use.
-
-## Recommended User Practices
-
-- Use Ollama for private or proprietary code when possible.
-- Use provider keys with the minimum required permissions.
-- Rotate API keys periodically.
-- Delete saved keys from XPlanator when no longer needed.
-- Review the source code before installing development builds.
+Implementation: `src/profiles.ts` manages profile-scoped SecretStorage references, `src/providers/` constructs provider requests, `src/contextExtractor.ts` bounds context, `src/history.ts` manages opt-in local history and `src/webviewPanel.ts` renders escaped content.

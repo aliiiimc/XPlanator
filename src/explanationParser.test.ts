@@ -59,9 +59,9 @@ Keep this sentence short. Extra explanation that belongs in the details panel.`,
 test("parseExplanation falls back when the model ignores the requested format", () => {
   const sections = parseExplanation("This is a plain explanation.\nIt has no labelled sections.", "en");
 
-  assert.equal(sections.summary, "This is a plain explanation.");
+  assert.equal(sections.summary, "");
   assert.equal(sections.details, "This is a plain explanation.\nIt has no labelled sections.");
-  assert.equal(sections.takeaway, "Re-read the target snippet and the details to confirm your understanding.");
+  assert.equal(sections.takeaway, "");
 });
 
 test("stripHighlightMarkers removes model highlight brackets for copied text", () => {
